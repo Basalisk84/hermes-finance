@@ -9,8 +9,8 @@
   // Demo v2 (t_d31fda2a). The weekly build (scripts/demo_weekly.sh, demo_combine.py) holds 7 variants, one per weekday
   // (Monday 0), each built for its own day: a visitor gets their weekday's (?demo-variant=0-6 picks one). The demo's
   // today is the visitor's today (?demo-today=YYYY-MM-DD or =build sets it): every date in every answer moves by the
-  // same number of days (SHIFT.days) and every month key by the months that moves the build day (SHIFT.months), the
-  // question moved back first, so each answer is the frozen one with its dates moved (scripts/demo_parity.py proves it).
+  // same number of days (SHIFT.days), clamped so it stays in its own month moved by SHIFT.months (shiftDate below),
+  // and every month key moves by SHIFT.months; the question is moved back first, so each answer is the frozen one with its dates moved (scripts/demo_parity.py proves it).
   const ASKED = new URL(location.href).searchParams;
   const VARIANTS = ME.dataset.variants ? ME.dataset.variants.split(',') : null;
   const VARIANT = !VARIANTS ? null : /^[0-6]$/.test(ASKED.get('demo-variant') || '') ? Number(ASKED.get('demo-variant')) :
@@ -20,6 +20,16 @@
   const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
   const addMonths = (m, n) => { const k = Number(m.slice(0, 4)) * 12 + Number(m.slice(5, 7)) - 1 + n; return `${String(Math.floor(k / 12)).padStart(4, '0')}-${String(k % 12 + 1).padStart(2, '0')}`; };
   const addDays = (iso, n) => new RealDate(RealDate.parse(`${iso}T12:00:00Z`) + n * 864e5).toISOString().slice(0, 10);
+  // The one date rule (scripts/demo_ask.py shift_day, demo/worker/src/index.js shiftDate): a date never leaves
+  // month(date) + months. Plain day arithmetic is kept when it lands in that month; a date it would carry out of the
+  // month is clamped to the month's first or last day. So a {{d:}} token and the {{m:}} label of the same answer always
+  // name the same month, dates stay in order, and none moves past the shifted today.
+  const daysInMonth = (m) => new RealDate(RealDate.UTC(Number(m.slice(0, 4)), Number(m.slice(5, 7)), 0)).getUTCDate();
+  function shiftDate(iso, days, months) {
+    const plain = addDays(iso, days), target = addMonths(iso.slice(0, 7), months);
+    if (plain.slice(0, 7) === target) return plain;
+    return plain.slice(0, 7) < target ? `${target}-01` : `${target}-${String(daysInMonth(target)).padStart(2, '0')}`;
+  }
   const BUILD_DAY = new RealDate(NOW).toISOString().slice(0, 10);
   const SHIFT = {days: 0, months: 0};
   {
@@ -34,9 +44,9 @@
   }
   const DAY_RE = /^(\d{4}-\d{2}-\d{2})([T ].*)?$/, MONTH_RE = /^\d{4}-\d{2}$/;
   const PROSE_RE = /\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) (\d{1,2})\b/g;
-  function moveText(s, sign, prose) {   // one string, moved by SHIFT (sign -1: back)
+  function moveText(s, sign, prose, safe) {   // one string, moved by SHIFT (sign -1: back; safe: an Ask answer's date stays in its month)
     const m = DAY_RE.exec(s);
-    if (m && Number.isFinite(RealDate.parse(m[1]))) return addDays(m[1], sign * SHIFT.days) + (m[2] || '');
+    if (m && Number.isFinite(RealDate.parse(m[1]))) return (safe ? shiftDate(m[1], sign * SHIFT.days, sign * SHIFT.months) : addDays(m[1], sign * SHIFT.days)) + (m[2] || '');   // app data: plain days (demo_parity proves it)
     if (MONTH_RE.test(s) && Number(s.slice(5)) >= 1 && Number(s.slice(5)) <= 12) return addMonths(s, sign * SHIFT.months);
     if (!prose) return s;
     return s.replace(PROSE_RE, (all, mon, d) => {   // "sent Oct 25": the nearest such day to the build day
@@ -49,9 +59,9 @@
       return `${MONTHS[Number(x.slice(5, 7)) - 1].slice(0, 3)} ${Number(x.slice(8))}`;
     });
   }
-  const moved = (x, sign = 1, prose = true) => !SHIFT.days && !SHIFT.months ? x : Array.isArray(x) ? x.map((v) => moved(v, sign, prose)) :
-    x && typeof x === 'object' ? Object.fromEntries(Object.entries(x).map(([k, v]) => [moveText(k, sign, prose), moved(v, sign, prose)])) :
-      typeof x === 'string' ? moveText(x, sign, prose) : x;
+  const moved = (x, sign = 1, prose = true, safe = false) => !SHIFT.days && !SHIFT.months ? x : Array.isArray(x) ? x.map((v) => moved(v, sign, prose, safe)) :
+    x && typeof x === 'object' ? Object.fromEntries(Object.entries(x).map(([k, v]) => [moveText(k, sign, prose, safe), moved(v, sign, prose, safe)])) :
+      typeof x === 'string' ? moveText(x, sign, prose, safe) : x;
   const offset = NOW + SHIFT.days * 864e5 - RealDate.now();
   function DemoDate(...args) {
     if (!new.target) return new RealDate(RealDate.now() + offset).toString();
@@ -158,19 +168,19 @@
   // falls back to the canned one quietly; an exhausted free quota locks the switch until the reset time.
   const LIVE_KEY = 'hf-demo.live-ai', ANSWERS_KEY = 'hf-demo.ask.v2', LIVE_MS = 8000;
   // {{d:YYYY-MM-DD}} "Oct 26", {{D:..}} "Oct 26, 2026", {{m:YYYY-MM}} "October 2026", {{M:..}} "Oct 2026" (demo_ask.render)
-  function render(text) {
+  function render(text, shift = SHIFT) {
     return String(text).replace(/\{\{([dDmM]):(\d{4}-\d{2}(?:-\d{2})?)\}\}/g, (_, kind, v) => {
       if (kind === 'd' || kind === 'D') {
         if (v.length !== 10) return v;
-        const x = addDays(v, SHIFT.days);
+        const x = shiftDate(v, shift.days, shift.months);
         return `${MONTHS[Number(x.slice(5, 7)) - 1].slice(0, 3)} ${Number(x.slice(8))}${kind === 'D' ? `, ${x.slice(0, 4)}` : ''}`;
       }
-      const mo = addMonths(v.slice(0, 7), SHIFT.months), name = MONTHS[Number(mo.slice(5)) - 1];
+      const mo = addMonths(v.slice(0, 7), shift.months), name = MONTHS[Number(mo.slice(5)) - 1];
       return `${kind === 'm' ? name : name.slice(0, 3)} ${mo.slice(0, 4)}`;
     });
   }
-  const renderDeep = (x) => Array.isArray(x) ? x.map(renderDeep) : x && typeof x === 'object' ?
-    Object.fromEntries(Object.entries(x).map(([k, v]) => [k, renderDeep(v)])) : typeof x === 'string' ? render(x) : x;
+  const renderDeep = (x, shift = SHIFT) => Array.isArray(x) ? x.map((v) => renderDeep(v, shift)) : x && typeof x === 'object' ?
+    Object.fromEntries(Object.entries(x).map(([k, v]) => [k, renderDeep(v, shift)])) : typeof x === 'string' ? render(x, shift) : x;
   function words(text, m) {
     let t = ` ${String(text).toLowerCase().replace(/[‘’]/g, "'").replace(/'s\b/g, '').replace(/[^a-z0-9$]+/g, ' ')} `;
     for (const [phrase, concept] of Object.entries(m.phrases)) t = t.split(` ${phrase} `).join(` ${concept} `);
@@ -270,7 +280,7 @@
     const wait = typeof window.HFDemoAskDelay === 'number' ? window.HFDemoAskDelay : 650;   // "Looking at your numbers…"
     const on = live.get() && !live.locked();
     if (!id) {
-      const u = ask.unmatched, out = {reply: render(u.reply), sources: u.sources.map(render), stats: [], cards: []};
+      const u = ask.unmatched, out = {reply: render(u.reply), sources: u.sources.map((x) => render(x)), stats: [], cards: []};
       const extra = {preset: null, blocks: [], suggestions: u.suggestions, live: false};
       if (on) {   // any question gets a model answer, from the demo's general summary
         const res = await liveReply(question, null);
@@ -285,8 +295,8 @@
       return out;
     }
     const p = ask.presets[id];
-    const out = {reply: render(p.reply), sources: p.sources.map(render), stats: clone(p.stats), cards: []};
-    const extra = {preset: id, blocks: moved(renderDeep(p.blocks), 1, false), next: p.next, live: false};
+    const out = {reply: render(p.reply), sources: p.sources.map((x) => render(x)), stats: clone(p.stats), cards: []};
+    const extra = {preset: id, blocks: moved(renderDeep(p.blocks), 1, false, true), next: p.next, live: false};
     if (on) {
       const res = await liveReply(question, id);
       if (res.text) { out.reply = res.text; out.sources = [ask.live.source, ...out.sources]; extra.live = true; }
@@ -418,5 +428,6 @@
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', banner, {once: true}); else banner();
   window.HFDemo = {route, build: BUILD, now: NOW, variant: VARIANT, shift: SHIFT, store: () => ({prefs}), transactions,
-    ask: {match, render, answerFor: (reply) => ANSWERS.get(reply) || null, data: () => load('ask'), live, clock: () => RealDate.now()}};   // (answers' `at` is the real clock, not the demo's)
+    ask: {match, render, renderShift: (text, days, months) => render(text, {days, months}),
+      answerFor: (reply) => ANSWERS.get(reply) || null, data: () => load('ask'), live, clock: () => RealDate.now()}};   // (answers' `at` is the real clock, not the demo's)
 })();

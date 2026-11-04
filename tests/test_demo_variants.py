@@ -1,6 +1,7 @@
 """t_d31fda2a: the weekly demo's seeded variants (build_demo.py --seed), their combined dist (demo_combine.py) and the
 visitor-relative dates (demo/shim.js SHIFT)."""
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -12,6 +13,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
+import demo_ask
 import demo_combine
 import demo_parity
 
@@ -29,6 +31,18 @@ def builds(tmp_path_factory):
     tmp = tmp_path_factory.mktemp('demo-variants')
     return tmp, {'s0': build(tmp / 's0', 0), 's2': build(tmp / 's2', 2), 's2again': build(tmp / 's2again', 2),
                  's6': build(tmp / 's6', 6, '2026-10-25')}
+
+
+# The dining repro reads its "Latest" cards from the frozen preset: seed 0's latest cards are 09-28/23/18, so the
+# day shift leaves September at both 2026-10-29 (months=0) and 2026-11-03 (months=1). The report (the reply's
+# {{m:}} month) must name the same month as every card date.
+DINING_REPRO = [('2026-10-29', (2026, 9)), ('2026-11-03', (2026, 10))]
+
+
+@pytest.fixture(scope='module')
+def dining(builds):
+    tmp, _ = builds
+    return tmp, build(tmp / 'dining', 0, '2026-10-24')
 
 
 @pytest.fixture(scope='module')
@@ -120,8 +134,89 @@ def test_the_demo_today_is_the_visitors_today(builds):
     assert abs(demo - pinned) < 5_000
 
 
+DATE_SHIFT_CASES = json.loads((ROOT / 'demo/date-shift-cases.json').read_text())['cases']
+ISO_RE = re.compile(r'\d{4}-\d{2}-\d{2}')
+MONTH_YEAR_RE = re.compile(r'\b(January|February|March|April|May|June|July|August|September|October|November|December)'
+                           r' (\d{4})\b')
+MONTH_NUMBERS = {name: i + 1 for i, name in enumerate(
+    ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November',
+     'December'])}
+
+
+def iso_dates(x):
+    if isinstance(x, dict):
+        return [d for v in x.values() for d in iso_dates(v)]
+    if isinstance(x, list):
+        return [d for v in x for d in iso_dates(v)]
+    return [x] if isinstance(x, str) and ISO_RE.fullmatch(x) else []
+
+
+def reply_month(reply):
+    mt = MONTH_YEAR_RE.search(reply)
+    return (int(mt.group(2)), MONTH_NUMBERS[mt.group(1)]) if mt else None
+
+
+def test_shim_worker_and_python_agree_on_the_shared_date_shift_cases(builds):
+    """One rule for demo/shim.js, demo/worker/src/index.js and scripts/demo_ask.py, including month boundaries."""
+    tmp, b = builds
+    expected = [c['expected'] for c in DATE_SHIFT_CASES]
+    shim = harness(tmp, b['s0'], '?demo-today=build',
+                   evals=[f'HFDemo.ask.renderShift({json.dumps(c["text"])}, {c["days"]}, {c["months"]})'
+                          for c in DATE_SHIFT_CASES])['evals']
+    assert shim == expected
+    pairs = [[c['text'], c['days'], c['months']] for c in DATE_SHIFT_CASES]
+    script = ("import('" + (ROOT / 'demo/worker/src/index.js').as_uri() + "').then((w) => "
+              "process.stdout.write(JSON.stringify(" + json.dumps(pairs) +
+              ".map(([t, d, m]) => w.renderDates(t, {days: d, months: m})))))")
+    r = subprocess.run([shutil.which('node'), '--input-type=module', '-e', script],
+                       capture_output=True, text=True, timeout=60, check=True)
+    assert json.loads(r.stdout) == expected
+    assert [demo_ask.render(c['text'], c['days'], c['months']) for c in DATE_SHIFT_CASES] == expected
+
+
+def test_a_month_labelled_answer_lists_only_that_months_dates(dining):
+    """The dining repro: the reply's {{m:}} month and the 'Latest' cards' dates agree across a month boundary."""
+    tmp, dist = dining
+    ask = ("(async () => { const a = await HFDemo.ask.data();"
+           " const q = 'How much did I spend on dining last month?';"
+           " const id = HFDemo.ask.match(q, a);"
+           " const [, r] = await HFDemo.route('POST', new URL('/api/chat', location.href).href,"
+           "   JSON.stringify({messages: [{role: 'user', content: q}]}));"
+           " const extra = HFDemo.ask.answerFor(r.reply);"
+           " return {id, shift: HFDemo.shift, reply: r.reply, blocks: extra ? extra.blocks : null}; })()")
+    bad = []
+    for today, want in DINING_REPRO:
+        got = harness(tmp, dist, f'?demo-today={today}', evals=[ask])['evals'][0]
+        assert got['id'] == 'dining', got
+        assert got['blocks'], got
+        month = reply_month(got['reply'])
+        dates = iso_dates(got['blocks'])
+        inside = bool(dates) and all((date.fromisoformat(d).year, date.fromisoformat(d).month) == want for d in dates)
+        if month != want or not inside:
+            bad.append(f'{today}: reply month {month}, want {want}, cards {dates}')
+    assert not bad, '\n'.join(bad)
+
+
 def test_prose_dates_move_from_their_nearest_year():
     d = date(2026, 12, 30)
     assert demo_parity.move({'2026-12-30': ['sent Dec 29', 'next ~Jan 2, $5', '2026-12', '2026-12-30T10:00:00Z']}, d, 3, 1) == \
         {'2027-01-02': ['sent Jan 1', 'next ~Jan 5, $5', '2027-01', '2027-01-02T10:00:00Z']}
     assert demo_parity.move('Oct 2026 and May 5th', d, 1, 0) == 'Oct 2026 and May 5th'   # (not a "Mon D")
+
+
+def test_the_date_rule_keeps_order_and_the_month_label_for_every_shift():
+    """A shifted month's dates stay inside the shifted month and keep their order (a "latest payments" list
+    stays sorted), for every day of a year of source dates and every shift up to 40 days either way."""
+    from datetime import timedelta
+
+    start = date(2026, 1, 1)
+    days = [(start + timedelta(n)).isoformat() for n in range(366)]
+    for shift in range(-40, 41):
+        for k in (-2, -1, 0, 1, 2):
+            prev = None
+            for iso in days:
+                out = demo_ask.shift_day(iso, shift, k)
+                assert out[:7] == demo_ask.add_months(iso[:7], k), (iso, shift, k, out)
+                if prev and prev[0][:7] == iso[:7]:
+                    assert out >= prev[1], (prev, iso, shift, k, out)
+                prev = (iso, out)

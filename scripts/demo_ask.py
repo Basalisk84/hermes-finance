@@ -95,15 +95,32 @@ def add_months(month: str, n: int) -> str:
     return f"{k // 12:04d}-{k % 12 + 1:02d}"
 
 
+def _days_in_month(month: str) -> int:
+    y, mo = map(int, month.split("-"))
+    following = date(y + (mo == 12), mo % 12 + 1, 1)
+    return (following - date(y, mo, 1)).days
+
+
+def shift_day(iso: str, days: int = 0, months: int = 0) -> str:
+    """The one date rule (demo/shim.js shiftDate, demo/worker/src/index.js shiftDate): a date never leaves
+    `month(iso) + months`. Plain day arithmetic is kept when it lands in that month; a date it would carry out
+    of the month is clamped to the month's first or last day. Clamping a day shift keeps dates in order (a
+    "latest payments" list stays sorted) and never moves a date past the shifted today."""
+    plain = (date.fromisoformat(iso) + timedelta(days=days)).isoformat()
+    target = add_months(iso[:7], months)
+    if plain[:7] == target:
+        return plain
+    return f"{target}-01" if plain[:7] < target else f"{target}-{_days_in_month(target):02d}"
+
+
 def render(text: str, days: int = 0, months: int = 0) -> str:
     """The tokens as the visitor reads them, shifted by `days` (dates) and `months` (months): demo/shim.js's render()."""
-    def day(iso: str) -> date:
-        return date.fromisoformat(iso) + timedelta(days=days)
-
     def sub(mt: re.Match) -> str:
         kind, val = mt.group(1), mt.group(2)
         if kind in "dD":
-            x = day(val)
+            if len(val) != 10:
+                return val
+            x = date.fromisoformat(shift_day(val, days, months))
             return f"{MONTHS_SHORT[x.month - 1]} {x.day}" + (f", {x.year}" if kind == "D" else "")
         mo = add_months(val, months)
         names = MONTHS_LONG if kind == "m" else MONTHS_SHORT
