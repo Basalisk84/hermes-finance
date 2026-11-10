@@ -26,6 +26,10 @@ data-review/
 # untracked private words for scripts/dehardcode.py (docs/dehardcode.md)
 .private-words
 
+# local Kubernetes overlay holding real deployment values (node, hostPath, login, URL, edge CIDR): never tracked.
+# Operators copy deploy/k8s/overlays/homelab here and fill in real values (see deploy/README.md).
+deploy/k8s/overlays/local/
+
 # Cloudflare wrangler local account/token cache: never tracked, never exported
 .wrangler/
 **/.wrangler/

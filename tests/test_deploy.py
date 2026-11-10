@@ -5,8 +5,8 @@ network restriction to Traefik, the shared hostPath, the off-by-default provider
 The manifests are read as text (no YAML dependency in the test venv) and, when the `kustomize` binary is available,
 rendered and re-checked end to end. The `finance homelab-init` behaviour is exercised against a temporary database.
 
-This file assembles the private homelab hostPath from pieces so the tracked tree holds no contiguous home path of its
-own (the release scan covers tests/ too)."""
+The tracked overlay ships only neutral placeholder values (node name, data path, login, public URL, edge CIDR); a
+deployment's real values live in an untracked local overlay (see deploy/README.md), so nothing private is committed."""
 
 from __future__ import annotations
 
@@ -24,8 +24,10 @@ DOCKER = DEPLOY / "docker"
 BASE = DEPLOY / "k8s" / "base"
 HOMELAB = DEPLOY / "k8s" / "overlays" / "homelab"
 
-# The shared-db hostPath, never written contiguously in this file.
-HOST_DATA = "/" + "home" + "/" + "basalisk" + "/finance-data"
+# The shared-db hostPath placeholder the tracked overlay ships (a neutral server path, not anyone's home).
+HOST_DATA = "/srv/hermes-finance/data"
+NODE = "homelab-node"      # the placeholder node name the tracked overlay ships
+EDGE_CIDR = "192.0.2.10/32"  # RFC 5737 TEST-NET-1 placeholder for the edge in the tracked overlay
 APP_PORT = "8765"          # the app's loopback port
 SIDECAR_PORT = "8080"      # the only Service target
 
@@ -40,6 +42,12 @@ def test_dockerfile_is_multistage_python_312_nonroot():
     assert text.count("FROM ") >= 2, "a multi-stage build"
     assert "python:3.12" in text and "python:3.11" not in text and "python:3.13" not in text
     assert "uv sync --frozen" in text, "the locked dependency set, reproducibly"
+    # pyproject's license-files = ["LICENSE"] is read when the project is built, so LICENSE must be in the build
+    # context before `uv sync` installs the project (otherwise `uv sync --frozen --no-dev` fails). It is copied
+    # alongside README.md, which pyproject's `readme` also references, before the first sync.
+    copy_line = next(ln for ln in text.splitlines() if ln.startswith("COPY ") and "pyproject.toml" in ln)
+    assert "LICENSE" in copy_line and "README.md" in copy_line, "LICENSE copied with the project metadata"
+    assert text.index("LICENSE") < text.index("uv sync --frozen --no-dev\n"), "LICENSE present before the project install"
     # non-root: a fixed unprivileged UID, and USER set to it (never root)
     assert "USER 10001" in text
     assert "--extra mcp" not in text and "--extra photos" not in text, "MCP and photos stay out of the image"
@@ -103,12 +111,12 @@ def test_base_networkpolicy_denies_ingress_by_default():
 # --- the homelab overlay ---------------------------------------------------------------------------------------------
 def test_overlay_pins_node_shared_volume_and_identity():
     patch = read(HOMELAB / "patch-deployment.yaml")
-    assert "kubernetes.io/hostname: 2ndbrain" in patch
+    assert f"kubernetes.io/hostname: {NODE}" in patch
     assert f"path: {HOST_DATA}" in patch, "the shared hostPath for one finance.db"
     assert "type: Directory" in patch
     assert "FINANCE_PROXY_HEADER" in patch and "Remote-User" in patch
-    assert 'value: "jon"' in patch
-    assert "money.basalisk.net" in patch
+    assert 'value: "you"' in patch
+    assert "finance.example.invalid" in patch
     # the shared host directory must not be recursively chowned (fsGroup removed in the overlay)
     km = read(HOMELAB / "kustomization.yaml")
     assert "op: remove" in km and "/securityContext/fsGroup" in km
@@ -116,7 +124,7 @@ def test_overlay_pins_node_shared_volume_and_identity():
 
 def test_overlay_networkpolicy_allows_only_traefik():
     text = read(HOMELAB / "patch-networkpolicy.yaml")
-    assert "10.2.0.200/32" in text
+    assert EDGE_CIDR in text
     assert f"port: {SIDECAR_PORT}" in text
 
 
@@ -135,8 +143,9 @@ def test_docs_cover_edge_middleware_firewall_and_agpl():
     assert "Remote-User" in readme
     assert "strip" in readme.lower() and "Remote-*" in readme, "strip inbound Remote-* at the edge"
     assert "Authelia" in readme and "forwardAuth" in readme
-    assert "firewall" in readme.lower() and "10.2.0.200" in readme
+    assert "firewall" in readme.lower() and "192.0.2.10" in readme
     assert "builtin" in readme, "the fail-closed fallback is documented"
+    assert "overlays/local" in readme, "the untracked local overlay for real values is documented"
     assert "rollout undo" in readme and "backup" in readme.lower()
     notice = read(DEPLOY / "AGPL-NETWORK-NOTICE.md")
     assert "AGPL" in notice and "Affero" in notice
@@ -146,20 +155,20 @@ def test_docs_cover_edge_middleware_firewall_and_agpl():
 # --- behaviour: the app and the homelab-init command -----------------------------------------------------------------
 def test_proxy_mode_refuses_non_loopback_bind():
     """The security invariant the whole deployment rests on: in proxy mode the app binds loopback only."""
-    acc = access.Access("proxy", "Remote-User", {"jon"}, ["https://money.basalisk.net"])
+    acc = access.Access("proxy", "Remote-User", {"you"}, ["https://finance.example.invalid"])
     assert access.startup_problems(acc, "127.0.0.1", login_ready=False) == []
     problems = access.startup_problems(acc, "0.0.0.0", login_ready=False)
     assert problems and any("127.0.0.1" in p for p in problems)
 
 
 def test_homelab_init_seeds_proxy_mode_and_turns_providers_off(data_dir):
-    rc = cli.main(["homelab-init", "--allow-user", "jon", "--public-url", "https://money.example.net"])
+    rc = cli.main(["homelab-init", "--allow-user", "you", "--public-url", "https://money.example.net"])
     assert rc == 0
     c = db.connect()
     try:
         assert prefs.get(c, "access.mode") == "proxy"
         assert prefs.get(c, "access.proxy_header") == "Remote-User"
-        assert prefs.get(c, "access.allowed_identities") == ["jon"]
+        assert prefs.get(c, "access.allowed_identities") == ["you"]
         assert "https://money.example.net" in prefs.get(c, "access.public_urls")
         assert prefs.get(c, "mcp.enabled") is False
         assert prefs.get(c, "ai.mode") == "off"
@@ -169,18 +178,18 @@ def test_homelab_init_seeds_proxy_mode_and_turns_providers_off(data_dir):
         acc = access.load(c)
         assert acc.mode == "proxy" and acc.header == "Remote-User"
         # the seeded identity is admitted; another login is refused
-        assert acc.identities == {"jon"}
+        assert acc.identities == {"you"}
     finally:
         c.close()
 
 
 def test_homelab_init_is_idempotent_and_needs_an_identity(data_dir):
     assert cli.main(["homelab-init"]) == 2, "no identity: refused"
-    assert cli.main(["homelab-init", "--allow-user", "jon"]) == 0
-    assert cli.main(["homelab-init", "--allow-user", "jon"]) == 0, "safe to run again"
+    assert cli.main(["homelab-init", "--allow-user", "you"]) == 0
+    assert cli.main(["homelab-init", "--allow-user", "you"]) == 0, "safe to run again"
     c = db.connect()
     try:
-        assert prefs.get(c, "access.allowed_identities") == ["jon"], "no duplicate identities"
+        assert prefs.get(c, "access.allowed_identities") == ["you"], "no duplicate identities"
     finally:
         c.close()
 
@@ -191,8 +200,8 @@ def test_kustomize_overlay_renders_the_invariants():
     assert "namespace: finance" in out
     assert "replicas: 1" in out and "type: Recreate" in out
     assert f"path: {HOST_DATA}" in out
-    assert "10.2.0.200/32" in out
-    assert "2ndbrain" in out
+    assert EDGE_CIDR in out
+    assert NODE in out
     assert "automountServiceAccountToken: false" in out
     assert "fsGroup" not in out, "the overlay removes fsGroup so the shared hostPath is never chowned"
     assert "type: NodePort" not in out, "the safe ClusterIP default"

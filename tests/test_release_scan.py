@@ -133,8 +133,6 @@ EXEMPT_SAMPLES = {
     ("tests/test_importfile.py", "long-id"): J(["'", "2026", "0115", "2469216000", "3", "'"]),
     ("tests/test_plugin_crons.py", "hex-id"): J(["job ", "0f1e2d", "3c4b5a"]),
     ("tests/test_valuation.py", "hex-id"): J(["VIN 1HGCM ", "82633a", "004352"]),
-    # the homelab overlay's shared-db hostPath (assembled here so this file holds no contiguous home path itself)
-    ("deploy/*", "personal-path"): J(["hostPath: /", "home", "/", "basalisk", "/finance-data"]),
 }
 
 

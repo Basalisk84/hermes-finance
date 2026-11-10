@@ -4,13 +4,14 @@ metadata:
   name: hermes-finance
 spec:
   ingress:
-    # Only Traefik (the homelab edge at 10.2.0.200) may reach the sidecar. Everything else is denied.
+    # Only the edge proxy (here a placeholder example address 192.0.2.10) may reach the sidecar; everything else is
+    # denied. Set your real edge CIDR in an untracked local overlay (see deploy/README.md).
     # This governs pod-level traffic; if the Service is exposed as a NodePort, ALSO apply the host-firewall rule in
     # deploy/README.md, because NodePort DNAT can bypass this policy. If neither can be guaranteed, fail closed by
     # switching access.mode to builtin (built-in login) so a forged Remote-User alone cannot get in.
     - from:
         - ipBlock:
-            cidr: 10.2.0.200/32
+            cidr: 192.0.2.10/32
       ports:
         - protocol: TCP
           port: 8080
