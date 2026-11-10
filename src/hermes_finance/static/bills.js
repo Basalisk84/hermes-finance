@@ -9,7 +9,7 @@
 (window.HF_EXT = window.HF_EXT || []).push((X) => {
   'use strict';
   const {h, fill, icon, plural, money, money2, billAmt, usualText, billTag, fmtDate, acctName, nameMask, instShort, avatar,
-    bigMoney, api, post, S, HOOKS, openSheet, closeModal, closeBtn, backBtn, toast, modal} = X;
+    bigMoney, api, post, S, HOOKS, openSheet, closeModal, closeBtn, backBtn, toast, modal, askAboutBtn, askMonth} = X;
   let OPEN = null;  // the transaction sheet's Bill section on screen: {sec, t, ctx}
 
   const fld = (label, control, opts = {}) => h('div', {class: 'fld', dataset: opts.key ? {f: opts.key} : null},
@@ -204,6 +204,7 @@
       d.charges.length ? d.charges.map(chargeRow) : h('p', {class: 'hint'}, `Last paid ${fmtDate(b.last_date, true)}.`)),
       h('div', {class: 'row'},
         h('button', {class: 'btn ghost', type: 'button', onclick: () => trackSheet({...d, action: 'update'}, reopen)}, icon('pencil'), 'Edit schedule'),
+        askAboutBtn(`Tell me about my ${b.merchant} recurring bill (${b.cadence_label}, about ${money(b.amount)}) in ${askMonth()}.`),
         h('button', {class: 'btn danger', type: 'button', onclick: () => confirmStop(b, reopen)}, 'Stop tracking'))],
     {narrow: true, cls: 'billsheet'});
     document.querySelector('#sheet').dataset.billKey = b.key;

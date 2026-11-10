@@ -143,6 +143,20 @@ aside#side { background: var(--side); border-right: 1px solid #161a24; position:
 .brand { display: flex; align-items: center; gap: 11px; font-weight: 700; font-size: 17px; letter-spacing: -.01em; padding: 0 8px; }
 .brand img { width: 30px; height: 30px; border-radius: 8px; flex: none; }
 .snav { display: flex; flex-direction: column; gap: 3px; }
+/* command-center groups: a small label above each run of nav links (Daily, Worth) */
+.snav .navgroup { font-size: 13px; font-weight: 600; color: var(--dim); letter-spacing: .02em; padding: 10px 11px 4px; margin: 0; }
+.snav .navgroup:first-child { padding-top: 2px; }
+/* the phone More page: a tappable list of routes */
+.morelist { display: flex; flex-direction: column; gap: 2px; }
+.morelink { display: flex; align-items: center; gap: 12px; padding: 11px 8px; border-radius: 11px; color: var(--fg);
+  text-decoration: none; min-height: 44px; }
+.morelink:hover { background: #12151d; }
+.morelink > svg { color: var(--dim); flex: none; }
+.morelink .n:empty { display: none; }
+.morelink .n { font-size: 13px; color: var(--dim); font-weight: 650; border-radius: 999px; padding: 1px 8px; }
+.morelink .n.rv { color: #0c0e13; background: var(--warn); }
+.morelink .n.ov { color: #ffa0a0; background: rgba(255, 123, 123, .15); }
+.morelink .n.wn { color: #ffc977; background: rgba(245, 180, 84, .14); }
 .snav a { display: flex; align-items: center; gap: 12px; padding: 9px 11px; border-radius: 11px; color: #c6cbd7;
   text-decoration: none; font-weight: 500; }
 .snav a svg { color: var(--dim); }
@@ -455,6 +469,47 @@ a.lnk:hover, button.lnk:hover { text-decoration: underline; }
 .al.warn { border-color: rgba(245, 180, 84, .38); background: rgba(245, 180, 84, .08); }
 .al.ok { border-color: rgba(79, 209, 165, .3); background: rgba(79, 209, 165, .06); }
 a.al:hover { border-color: var(--dim); }
+/* ---- command center (Overview above-the-fold) ---- */
+.cc { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 16px 18px; margin-bottom: 14px; }
+.cc-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.cc-head h2 { font-size: 17px; font-weight: 650; margin: 0; letter-spacing: -.01em; }
+.cc-attn { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; color: var(--fg); text-decoration: none;
+  padding: 5px 9px; border-radius: 10px; }
+.cc-attn.ok { color: var(--mut); }
+.cc-attn:hover { background: var(--card2); }
+.cc-attn b { font-weight: 650; }
+.cc-figs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.cc-link { text-decoration: none; color: inherit; display: block; border-radius: 12px; padding: 4px; margin: -4px; }
+.cc-link:hover { background: var(--card2); }
+.cc-fig { min-width: 0; }
+.cc-lab { font-size: 13px; color: var(--dim); font-weight: 600; margin-bottom: 4px; }
+.cc-sub { font-size: 13px; color: var(--mut); margin-top: 3px; }
+.big.cc { font-size: clamp(19px, 5.6vw, 30px); line-height: 1.1; }
+.big.cc.dim { color: var(--dim); }
+/* ---- Needs attention (one prioritized card) ---- */
+.attention { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 14px 16px; margin-bottom: 16px;
+  display: flex; flex-direction: column; gap: 8px; }
+.attention.ok { padding: 10px 14px; }
+.attn-head { display: flex; align-items: center; gap: 10px; }
+.attn-head h2 { font-size: 15px; font-weight: 650; margin: 0; }
+.attn-n { font-size: 13px; font-weight: 650; color: #0c0e13; background: var(--warn); border-radius: 999px; padding: 1px 9px; }
+.attn { display: flex; align-items: center; gap: 10px; font-size: 14px; padding: 9px 12px 9px 10px; border-radius: 13px;
+  background: var(--card2); border: 1px solid var(--line); color: inherit; text-decoration: none; min-height: 44px; }
+.attn b { font-weight: 650; }
+.attn .cb { width: 28px; height: 28px; border-radius: 9px; flex: none; }
+.attn > svg { color: var(--dim); flex: none; }
+.attn.bad { border-color: rgba(255, 123, 123, .38); background: rgba(255, 123, 123, .08); }
+.attn.warn { border-color: rgba(245, 180, 84, .38); background: rgba(245, 180, 84, .08); }
+.attn.ok { border-color: rgba(79, 209, 165, .3); background: rgba(79, 209, 165, .06); }
+a.attn:hover { border-color: var(--dim); }
+.attn-more { margin: 0; }
+.attn-more > summary { cursor: pointer; font-size: 14px; font-weight: 600; color: var(--acc); padding: 6px 4px; list-style: none;
+  min-height: 32px; display: flex; align-items: center; }
+.attn-more > summary::-webkit-details-marker { display: none; }
+.attn-more > summary:hover { color: var(--fg); }
+.attn-list { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+/* contextual "Ask about this" buttons in detail sheets/cards */
+.askabout svg { color: var(--acc); }
 .pbar { position: relative; height: 12px; border-radius: 7px; background: #0e1118; box-shadow: inset 0 0 0 1px #1d2330; margin: 18px 0 26px; }
 .pbar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 7px; background: linear-gradient(90deg, #6f8cff, #8ea8ff); }
 .pbar b { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 7px;
@@ -1073,11 +1128,8 @@ button.dl:hover { background: var(--card2); border-radius: 12px; }
   .li.wrap:has(> .rt.bill) .grow > span > .cb { display: none; }
   .li.wrap[data-bill]:has(> .rt.bill) { flex-wrap: wrap; row-gap: 8px; }  /* (baseline K1) as the Subscriptions rows */
   .li.wrap[data-bill]:has(> .rt.bill) > .grow { min-width: min-content; }
-  /* the drawer: Overview, Transactions, Budgets, then Goals (HOTFIX-1: under Budgets, as in the desktop sidebar), then
-     Accounts, Recurring, Investments, Loans & debt; Settings stays pinned at its bottom */
-  #nav a[data-pg=overview] { order: 1; } #nav a[data-pg=transactions] { order: 2; } #nav a[data-pg=budgets] { order: 3; }
-  #nav a[data-pg=goals] { order: 4; } #nav a[data-pg=accounts] { order: 5; } #nav a[data-pg=recurring] { order: 6; }
-  #nav a[data-pg=investments] { order: 7; } #nav a[data-pg=debt] { order: 8; }
+  /* the drawer shows the same grouped nav as the desktop sidebar (Daily, then Worth), in DOM order; Settings stays
+     pinned at its bottom. The phone tab bar carries Overview, Transactions, Budgets, Accounts, then More. */
   .tabbar a[aria-current=page] { color: var(--fg); }
   .tabbar a[aria-current=page] svg { color: var(--acc); }
   .tabbar svg.i { width: 23px; height: 23px; }

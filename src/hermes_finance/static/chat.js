@@ -391,9 +391,21 @@
     store();
     draw();
   }
+  // "Ask about this" (contextual): open the panel and put a ready-made question in the composer WITHOUT sending it, so
+  // the user reads and edits it first. It never writes anything on its own and never bypasses an approval card — it is
+  // just a prefilled question. A no-op (returns false) when AI is off.
+  async function prefill(text) {
+    if (!enabled()) return false;
+    const q = String(text || '').trim();
+    if (panel.hidden) await open();
+    input.value = q;
+    grow();
+    if (!COARSE) { input.focus(); try { input.setSelectionRange(q.length, q.length); } catch (e) { /* ignore */ } }
+    return true;
+  }
   if (typeof window.addEventListener === 'function') window.addEventListener('focus', refreshContext);
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') return refreshContext();
   });
-  HF.chat = {open, close, ask, reset, refreshContext, log: LOG};   // (the tests and the layout gate open it this way too)
+  HF.chat = {open, close, ask, prefill, reset, refreshContext, log: LOG};   // (the tests and the layout gate open it this way too)
 });

@@ -93,7 +93,8 @@ FEATURE_FILES = ("goals", "txmeta", "billcal", "rollover", "alpaca", "bills",   
                  "catpick",                                                       # + polish P0's category picker
                  "txfilter",                                                       # + polish P1's Transactions filters
                  "wherewent",                                                      # + polish P2b's grouped spending card
-                 "budgets")                                                        # + polish P2A's grouped Budgets
+                 "budgets",                                                         # + polish P2A's grouped Budgets
+                 "review")                                                          # + the focused transaction-review workflow
 STATIC_FILES.update({f"{n}.js": "text/javascript; charset=utf-8" for n in FEATURE_FILES})
 STATIC_FILES.update({f"{n}.css": "text/css; charset=utf-8" for n in FEATURE_FILES})
 # Root paths browsers ask for on their own -> the static file they get.
@@ -566,13 +567,18 @@ def _e(v: Any) -> str:
 # and, HOTFIX-1, Settings as its fifth tab; the rest are in the drawer (app.css orders it: Overview, Transactions, Budgets,
 # Goals, then Accounts, Recurring, Investments, Loans & debt). The desktop sidebar keeps this order: Goals (TASK-19)
 # under Budgets (HOTFIX-1: the drawer's too); the bills calendar is on Recurring.
+# Command-center navigation: a Daily group (the month-to-month pages) and a Worth group (what you own and owe). The
+# order here is the sidebar order and, with the phone drawer no longer reordering by CSS, the drawer order too.
 PAGES = (("overview", "Overview", "grid", "Overview"), ("transactions", "Transactions", "swap", "Transactions"),
-         ("budgets", "Budgets", "target", "Budgets"), ("goals", "Goals", "flag", None),
-         ("recurring", "Recurring", "repeat", None),
+         ("budgets", "Budgets", "target", "Budgets"), ("recurring", "Recurring", "repeat", None),
          ("accounts", "Accounts", "landmark", "Accounts"), ("investments", "Investments", "linechart", None),
-         ("debt", "Loans & debt", "handcoins", None))
-TABS = ("overview", "transactions", "budgets", "accounts", "settings")
+         ("debt", "Loans & debt", "handcoins", None), ("goals", "Goals", "flag", None))
+NAV_GROUPS = (("Daily", ("overview", "transactions", "budgets", "recurring")),
+              ("Worth", ("accounts", "investments", "debt", "goals")))
+# The phone tab bar: the four pages reached most often, then More (every remaining route and Settings, via #/more).
+TABS = ("overview", "transactions", "budgets", "accounts", "more")
 SETTINGS_TAB = ("settings", "Settings", "gear", "Settings")   # HOTFIX-1: in the sidebar it's the gear at the bottom
+MORE_TAB = ("more", "More", "menu", "More")                   # the phone tab that opens the rest (app.js renderMore)
 # 24x24 Lucide-style stroke icons. They live in the HTML (a <template>), so the script clones them and never
 # parses SVG markup itself; rings and sparklines are drawn with createElementNS from numbers only.
 ICONS = {
@@ -753,9 +759,14 @@ def render_page(s: dict[str, Any], tailnet: bool = False, shell: dict[str, Any] 
     used, limit = s["slots_used"], s["slot_limit"]
     full = used >= limit
     blocked = s["blocked_duplicate_links"]
-    nav = "".join(f'<a href="#/{key}" data-pg="{key}">{_icon(ic)}<span class="lbl">{_e(label)}</span>'
-                  f'<span class="n" data-count="{key}"></span></a>' for key, label, ic, _ in PAGES)
-    by_key = {p[0]: p for p in (*PAGES, SETTINGS_TAB)}
+    by_key = {p[0]: p for p in (*PAGES, SETTINGS_TAB, MORE_TAB)}
+
+    def nav_link(key: str) -> str:
+        _, label, ic, _ = by_key[key]
+        return (f'<a href="#/{key}" data-pg="{key}">{_icon(ic)}<span class="lbl">{_e(label)}</span>'
+                f'<span class="n" data-count="{key}"></span></a>')
+    nav = "".join(f'<p class="navgroup">{_e(title)}</p>' + "".join(nav_link(k) for k in keys)
+                  for title, keys in NAV_GROUPS)
     tabs = "".join(f'<a href="#/{key}" data-pg="{key}">{_icon(by_key[key][2])}<span>{by_key[key][3]}</span></a>'
                    for key in TABS)
     icons = "".join(_icon(name, f' data-icon="{name}"') for name in ICONS)

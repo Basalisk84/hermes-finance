@@ -87,6 +87,13 @@ def test_overview_shape(dash):
     assert get(dash, "/api/overview")[2]["month"] == "2026-09"          # defaults to the current month
 
 
+def test_overview_review_count_is_the_counts_source(dash):
+    # the command center / Needs attention review count is the same one-source number as /api/counts (and the sidebar)
+    _, _, ov = get(dash, "/api/overview?month=2026-09")
+    _, _, c = get(dash, "/api/counts?month=2026-09")
+    assert ov["review"] == c["review"] == 1
+
+
 def test_counts_budgets_recurring_categories_shapes(dash):
     status, _, c = get(dash, "/api/counts?month=2026-09")
     assert status == 200 and c == {"month": "2026-09", "transactions": 10, "review": 1, "over": 1, "warn": 0,
@@ -475,16 +482,18 @@ def test_shell_has_no_inline_script_or_handlers(dash):
 def test_shell_nav_tabs_icons_and_add_account(dash):
     html = dash.handle("GET", "/", LOCAL, b"")[2].decode()
     nav = re.search(r'<nav class="snav".*?</nav>', html, re.S).group(0)
-    assert re.findall(r'data-pg="(\w+)"', nav) == ["overview", "transactions", "budgets", "goals", "recurring", "accounts",
-                                                   "investments", "debt"]  # TASK-19: Goals, under Budgets
+    # Command-center grouping: a Daily group (the month pages) then a Worth group (own and owe)
+    assert re.findall(r'data-pg="(\w+)"', nav) == ["overview", "transactions", "budgets", "recurring", "accounts",
+                                                   "investments", "debt", "goals"]
+    assert re.findall(r'<p class="navgroup">([^<]+)</p>', nav) == ["Daily", "Worth"]
     assert "Loans &amp; debt" in nav
     tabs = re.search(r'<nav class="tabbar".*?</nav>', html, re.S).group(0)
-    # TASK-18 addendum: four tabs on a phone, HOTFIX-1: and Settings (the gear) the fifth; Recurring, Investments, Loans &
-    # debt and Goals are in the drawer
-    assert web.TABS == ("overview", "transactions", "budgets", "accounts", "settings")
-    assert re.findall(r'data-pg="(\w+)"', tabs) == ["overview", "transactions", "budgets", "accounts", "settings"]
-    assert re.findall(r"<span>([^<]+)</span></a>", tabs) == ["Overview", "Transactions", "Budgets", "Accounts", "Settings"]
-    assert tabs.count('<svg') == 5 and 'data-pg="settings"><svg' in tabs
+    # Phone tabs: the four most-used pages, then More (every remaining route and Settings, via #/more). Recurring,
+    # Investments, Loans & debt, Goals and Settings live under More / in the drawer.
+    assert web.TABS == ("overview", "transactions", "budgets", "accounts", "more")
+    assert re.findall(r'data-pg="(\w+)"', tabs) == ["overview", "transactions", "budgets", "accounts", "more"]
+    assert re.findall(r"<span>([^<]+)</span></a>", tabs) == ["Overview", "Transactions", "Budgets", "Accounts", "More"]
+    assert tabs.count('<svg') == 5 and 'data-pg="more"><svg' in tabs
     # Settings: the gear at the bottom of the sidebar (in the phone drawer)
     foot = re.search(r'<nav class="snav sfoot".*?</nav>', html, re.S).group(0)
     assert re.findall(r'data-pg="(\w+)"', foot) == ["settings"] and ">Settings<" in foot

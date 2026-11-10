@@ -404,6 +404,10 @@ def overview(conn: sqlite3.Connection, params: dict[str, str], today: date) -> d
         "cards_due": cards_due(conn, today),
         "category_history": insights.category_history(conn, [m["month"] for m in flow["months"]]),
         "recent": recent(conn, month),
+        # Command center / Needs attention: how many of the month's transactions nobody has decided yet (the same
+        # count the sidebar badge and ?kind=review use; one source).
+        "review": conn.execute(f"SELECT COALESCE(SUM(CASE WHEN {REVIEW_SQL} THEN 1 ELSE 0 END), 0) "
+                               "FROM v_transactions v WHERE v.month = ?", (month,)).fetchone()[0],
         "last_sync": last_sync(conn),
         "chart": {"excluded": chart_excluded(conn), "fixed_categories": list(insights.FIXED_CATEGORIES)},
         "goals": goals.tile(conn, today),  # TASK-19: the Overview's Goals tile
