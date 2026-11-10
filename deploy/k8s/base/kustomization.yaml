@@ -1,0 +1,24 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Generic, secret-free base. The homelab overlay pins it to the real node, volume, identity and network restriction.
+resources:
+  - deployment.yaml
+  - service.yaml
+  - networkpolicy.yaml
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: hermes-finance
+    includeSelectors: false
+
+configMapGenerator:
+  # The reverse-proxy sidecar config, mounted read-only at /etc/nginx/nginx.conf. No secret is ever placed in a
+  # ConfigMap.
+  - name: hermes-finance-proxy
+    files:
+      - nginx.conf
+
+images:
+  - name: hermes-finance
+    newTag: local

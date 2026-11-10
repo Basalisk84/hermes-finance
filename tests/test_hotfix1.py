@@ -440,28 +440,34 @@ TABS = """(() => { const acc = getComputedStyle(document.documentElement).getPro
     hitH: parseFloat(hit.height) || r.height}; }); })()"""
 
 
+COMMAND_ORDER = ["overview", "transactions", "budgets", "recurring", "accounts", "investments", "debt", "goals"]
+
+
 @chrome_only
-def test_goals_sits_under_budgets_in_the_sidebar_and_the_drawer(chrome, site):
+def test_command_center_groups_in_the_sidebar_and_the_drawer(chrome, site):
     b, s = chrome, site()
     go(b, s, width=1440)
-    assert b.js(ORDER) == ["overview", "transactions", "budgets", "goals", "recurring", "accounts", "investments", "debt"]
+    # Daily (overview, transactions, budgets, recurring) then Worth (accounts, investments, debt, goals), same DOM
+    # order in the desktop sidebar and the phone drawer.
+    assert b.js(ORDER) == COMMAND_ORDER
+    assert b.js("[...document.querySelectorAll('#nav .navgroup')].map((p) => p.textContent)") == ["Daily", "Worth"]
     for width in (390, 768):
         go(b, s, width=width)
         b.js("document.getElementById('menu').click()")
         time.sleep(0.4)
-        assert b.js(ORDER) == ["overview", "transactions", "budgets", "goals", "accounts", "recurring", "investments", "debt"]
+        assert b.js(ORDER) == COMMAND_ORDER
     assert b.problems() == []
 
 
 @chrome_only
 @pytest.mark.parametrize("width", [360, 390, 430])
-def test_settings_is_the_fifth_tab_and_every_tab_fits(chrome, site, width):
+def test_more_is_the_fifth_tab_and_every_tab_fits(chrome, site, width):
     b, s = chrome, site()
-    for pg in ("overview", "settings"):
+    for pg in ("overview", "more"):
         go(b, s, page=pg, width=width)
         tabs = b.js(TABS)
-        assert [t["label"] for t in tabs] == ["Overview", "Transactions", "Budgets", "Accounts", "Settings"]
-        assert [t["pg"] for t in tabs][-1] == "settings" and all(t["icon"] for t in tabs)
+        assert [t["label"] for t in tabs] == ["Overview", "Transactions", "Budgets", "Accounts", "More"]
+        assert [t["pg"] for t in tabs][-1] == "more" and all(t["icon"] for t in tabs)
         assert len({t["fs"] for t in tabs}) == 1 and tabs[0]["fs"] >= 13                 # one size, 13px (TASK-18)
         for t in tabs:
             assert t["w"] >= 44 and t["h"] >= 44 and t["hitW"] >= 44 and t["hitH"] >= 44, t
@@ -471,7 +477,7 @@ def test_settings_is_the_fifth_tab_and_every_tab_fits(chrome, site, width):
         current = [t["pg"] for t in tabs if t["current"] == "page"]
         assert current == [pg], current
     lit = b.js(TABS)[-1]
-    assert lit["iconColor"] == "rgb(142, 168, 255)"                                        # the accent, on #/settings
+    assert lit["iconColor"] == "rgb(142, 168, 255)"                                        # the accent, on #/more
     assert b.problems() == []
 
 

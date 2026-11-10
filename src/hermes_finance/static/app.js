@@ -631,7 +631,7 @@
 
   // ---------- state ----------------------------------------------------------------------------
   const PAGES = {overview: 'Overview', transactions: 'Transactions', budgets: 'Budgets', recurring: 'Recurring',
-    accounts: 'Accounts', investments: 'Investments', debt: 'Loans & debt', asset: 'Account'};
+    accounts: 'Accounts', investments: 'Investments', debt: 'Loans & debt', asset: 'Account', more: 'More'};
   const NAV_OF = {asset: 'accounts'};  // a car's / property's page sits under Accounts
   const MONTH_PAGES = new Set(['overview', 'transactions', 'budgets']);
   const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
@@ -964,6 +964,20 @@
   }
 
   const reconnectBtn = (itemId) => h('button', {class: 'rc', type: 'button', 'data-item': itemId}, 'Reconnect');
+
+  // "Ask about this" (TASK: contextual Ask): open the Ask panel with a ready-made question about an entity and the
+  // selected month, for the user to review and send. Only shown when the Ask panel is on (data-ask); it prefills, it
+  // never sends or writes — approval cards still gate every change. `askMonth` is the explicit month the question names.
+  const askEnabled = () => Boolean(document.body.dataset.ask);
+  const askMonth = () => monthYear(S.month);
+  function askAbout(question) {
+    return HF && HF.chat && typeof HF.chat.prefill === 'function' ? HF.chat.prefill(question) : false;
+  }
+  function askAboutBtn(question, label = 'Ask about this') {
+    if (!askEnabled()) return null;
+    return h('button', {class: 'btn sm ghost askabout', type: 'button', 'data-ask-about': '',
+      onclick: () => askAbout(question)}, icon('chat'), label);
+  }
   // A healthy bank: the same update-mode Link (with account selection) as Reconnect, so a card or account opened later
   // joins the connection it already has. Never a new Item, so it uses no Plaid slot.
   const updateBtn = (itemId, name) => h('button', {class: 'btn sm ghost upd', type: 'button', 'data-item': itemId,
@@ -2906,43 +2920,110 @@
     // Bills, then Income vs spending with Coming up beside it, Recent transactions last.
     [spent, stack, tiles, budgets, where, bills, flow, upcoming, recent].forEach((el, i) => { el.dataset.wide = String(i); });
     const grid = h('div', {class: 'grid'}, spent, stack, tiles, budgets, where, bills, flow, upcoming, recent);
-    fill(page, alertsStrip(d), grid);
+    fill(page, commandCenter(d), attentionCard(d), grid);
     later.forEach((fn) => fn());  // charts need their canvas in the DOM
     pack(grid);
   }
 
-  function alertsStrip(d) {
-    const items = d.alerts.map((a) => {
-      if (a.kind === 'cap') {
-        const over = a.level === 'over';
-        const due = a.due || 0;  // its bills still due this month count before they post
-        const when = due ? ' once bills clear' : '';
-        const grp = a.category == null && a.group != null;   // polish P2e: a group budget's alert
-        return h('a', {class: `al ${over ? 'bad' : 'warn'}`, href: hashFor('transactions', grp ? {group: a.group} : {category: a.category}),
-          dataset: grp ? {group: a.group} : {}},
-          grp ? ibadge(GROUP_ICON[a.group] || 'tag', over ? RGB.bad : RGB.warn) : ibadge(CATI[a.category] || 'tag', over ? RGB.bad : RGB.warn),
-          h('span', {}, h('b', {}, grp ? a.group : a.category), over ? [` is over budget${when} · `, h('b', {class: 'bad'},
-            `${due ? 'over' : 'overspent'} by ${money(a.spend + due - a.cap)}`)]
-            : ` is at ${ringPctOf(a.spend + due, a.cap)}% of its budget${when}`));
+  // ---------- command center (household above-the-fold) ----------------------------------------
+  // Three primary monthly figures — Spent, Left to spend, Bills due — and the Needs attention count, in one strip that
+  // is the first thing on the page (at 390px the whole strip is above the fold). Every number reuses an existing
+  // source: summary.mtd, budgets.left, and pace.bills_due_total.
+  function ccFigure(label, valueEl, sub, href) {
+    const body = h('div', {class: 'cc-fig'}, h('div', {class: 'cc-lab'}, label), valueEl,
+      sub ? h('div', {class: 'cc-sub'}, sub) : null);
+    return href ? h('a', {class: 'cc-link', href}, body) : body;
+  }
+  function commandCenter(d) {
+    const s = d.summary, b = d.budgets;
+    const spent = ccFigure('Spent', heroMoney(s.mtd, 'cc-spent', 'cc'),
+      s.is_current ? `${plural(s.days_left, 'day')} left` : 'this month');
+    const leftVal = b.count ? heroMoney(b.left, 'cc-left', `cc${b.left < 0 ? ' bad' : ''}`) : h('div', {class: 'big v cc dim'}, '—');
+    const left = ccFigure('Left to spend', leftVal,
+      !b.count ? 'no budgets yet' : b.left < 0 ? 'over budget' : b.per_day != null ? `about ${money(b.per_day)} a day` : null,
+      hashFor('budgets', {}));
+    const dueTotal = d.pace.bills_due_total || 0;
+    const dueCount = (d.pace.bills_due || []).length;
+    const bills = ccFigure('Bills due', h('div', {class: 'big v cc'}, splitMoney(dueTotal)),
+      dueCount ? `${plural(dueCount, 'bill')} to come` : 'nothing due', hashFor('recurring', {}));
+    const n = attentionItems(d).length;
+    const attn = h('button', {class: `cc-attn${n ? '' : ' ok'}`, type: 'button',
+      onclick: () => { const el = $('attention'); if (el) { el.scrollIntoView({block: 'nearest'}); el.focus({preventScroll: true}); } }},
+      ibadge(n ? 'alert' : 'checkc', n ? RGB.warn : RGB.ok, 'xs'),
+      h('span', {}, n ? h('b', {}, plural(n, 'thing')) : h('b', {}, 'All caught up'), n ? ' need attention' : ''));
+    return h('section', {class: 'cc', 'aria-label': 'This month'},
+      h('div', {class: 'cc-head'}, h('h2', {}, monthName(s.month)), attn),
+      h('div', {class: 'cc-figs'}, spent, left, bills));
+  }
+
+  // ---------- Needs attention (one prioritized card) -------------------------------------------
+  // Replaces the competing alert strips: a single card, ordered bank reconnect → overdue/due bill → transaction review
+  // → budget warning. Healthy states stay quiet (a slim reassurance line). The first item shows; the rest sit under an
+  // accessible "View all" expansion.
+  function attentionItems(d) {
+    const items = [];
+    const today = d.today, month = today.slice(0, 7);
+    for (const a of d.alerts) {           // 1. a bank that needs reconnecting (the one that needs you)
+      if (a.kind === 'connection') {
+        items.push({pri: 1, el: h('div', {class: 'attn bad'}, ibadge('alert', RGB.bad),
+          h('span', {class: 'grow'}, h('b', {}, a.institution_name), ' needs reconnecting'), reconnectBtn(a.item_id))});
       }
-      const rest = a.message.startsWith(a.institution_name) ? a.message.slice(a.institution_name.length) : `: ${a.message}`;
-      return h('div', {class: 'al bad'}, ibadge('alert', RGB.bad), h('span', {}, h('b', {}, a.institution_name), rest),
-        reconnectBtn(a.item_id));
-    });
-    for (const c of d.cards_due || []) {
-      const k = daysFrom(c.due, d.today);
-      items.push(h('a', {class: 'al warn', href: '#/debt'}, ibadge('card', RGB.warn),
-        h('span', {}, h('b', {}, `${instShort(c.institution_name) || c.name} card`), ` · ${money2(c.amount)} minimum due `,
-          k === 0 ? 'today' : k === 1 ? 'tomorrow' : `in ${k} days`)));
     }
-    if (!d.connections.broken) {  // TASK-22f: every connection (the Plaid banks and Alpaca), never "9 banks"
+    for (const c of d.cards_due || []) {  // 2a. a credit-card minimum payment due
+      const k = daysFrom(c.due, today);
+      items.push({pri: 2, el: h('a', {class: 'attn warn', href: '#/debt'}, ibadge('card', RGB.warn),
+        h('span', {class: 'grow'}, h('b', {}, `${instShort(c.institution_name) || c.name} card`),
+          ` · ${money2(c.amount)} minimum due ${k <= 0 ? 'today' : k === 1 ? 'tomorrow' : `in ${k} days`}`), icon('chevr'))});
+    }
+    for (const r of d.bills || []) {      // 2b. a recurring bill overdue or due in the next few days this month
+      if (r.paid_this_month || r.next_expected.slice(0, 7) !== month) continue;
+      const k = daysFrom(r.next_expected, today);
+      const late = r.status === 'late';
+      if (!late && k > 3) continue;
+      items.push({pri: late ? 2 : 2.5, el: h('a', {class: `attn ${late ? 'bad' : 'warn'}`, href: hashFor('recurring', {})},
+        ibadge('receipt', late ? RGB.bad : RGB.warn), h('span', {class: 'grow'}, h('b', {}, r.merchant), ' ',
+          relativeDate(r.next_expected, today, late, true)), icon('chevr'))});
+    }
+    if (d.review > 0) {                   // 3. transactions nobody has decided yet → the review workflow
+      const href = has(RENDER, 'review') ? hashFor('review', {}) : hashFor('transactions', {});
+      items.push({pri: 3, el: h('a', {class: 'attn warn', href}, ibadge('swap', RGB.warn),
+        h('span', {class: 'grow'}, h('b', {}, plural(d.review, 'transaction')), ' to review'), icon('chevr'))});
+    }
+    for (const a of d.alerts) {           // 4. a budget at or over its cap
+      if (a.kind !== 'cap') continue;
+      const over = a.level === 'over';
+      const grp = a.category == null && a.group != null;
+      const label = grp ? a.group : a.category;
+      const due = a.due || 0;
+      items.push({pri: 4, el: h('a', {class: `attn ${over ? 'bad' : 'warn'}`,
+        href: hashFor('transactions', grp ? {group: a.group} : {category: a.category})},
+        grp ? ibadge(GROUP_ICON[a.group] || 'target', over ? RGB.bad : RGB.warn) : ibadge(CATI[a.category] || 'target', over ? RGB.bad : RGB.warn),
+        h('span', {class: 'grow'}, h('b', {}, label),
+          over ? ` is over budget by ${money(a.spend + due - a.cap)}` : ` is at ${ringPctOf(a.spend + due, a.cap)}% of its budget`),
+        icon('chevr'))});
+    }
+    items.sort((a, b) => a.pri - b.pri);  // stable in modern engines: equal priorities keep source order
+    return items;
+  }
+
+  function attentionCard(d) {
+    const items = attentionItems(d);
+    if (!items.length) {
       const n = d.connections.total;
-      items.push(h('a', {class: 'al ok', href: '#/accounts'}, ibadge('checkc', RGB.ok),
-        h('span', {}, n ? `All ${plural(n, 'connection')} healthy` : 'No banks connected yet')));
+      return h('section', {class: 'attention ok', id: 'attention', tabindex: '-1', 'aria-label': 'Needs attention'},
+        h('div', {class: 'attn ok'}, ibadge('checkc', RGB.ok, 'xs'),
+          h('span', {class: 'grow'}, n ? `Nothing needs attention · all ${plural(n, 'connection')} healthy` : 'Nothing needs attention yet')));
     }
-    // t_3d65332a: a broken connection (it has a Reconnect button) comes first: it's the one that needs you
-    items.sort((a, b) => (b.tagName === 'DIV') - (a.tagName === 'DIV'));  // stable: the rest keep their order
-    return h('div', {class: 'alerts'}, items);
+    const head = h('div', {class: 'attn-head'}, h('h2', {}, 'Needs attention'),
+      h('span', {class: 'attn-n'}, String(items.length)));
+    const first = items[0].el;
+    const rest = items.slice(1);
+    const more = rest.length
+      ? h('details', {class: 'attn-more'},
+        h('summary', {}, `View all ${items.length}`),
+        h('div', {class: 'attn-list'}, rest.map((it, i) => (it.el.classList.add('mo-grow'), it.el.style.setProperty('animation-delay', `${i * 30}ms`), it.el))))
+      : null;
+    return h('section', {class: 'attention', id: 'attention', tabindex: '-1', 'aria-label': 'Needs attention'}, head, first, more);
   }
 
   function spentCard(d, later) {
@@ -3605,7 +3686,9 @@
           h('span', {class: 'edin bx-in'}, h('span', {class: 'pre', 'aria-hidden': 'true'}, CUR.sym), input)), err, sug),
       extra,
       h('div', {class: 'bx-foot'}, h('button', {type: 'button', class: 'p', onclick: save}, 'Save'),
-        h('button', {type: 'button', onclick: closeModal}, 'Cancel'), h('span', {class: 'sp'}), remove));
+        h('button', {type: 'button', onclick: closeModal}, 'Cancel'),
+        askAboutBtn(`How am I doing on my ${category} budget in ${askMonth()}?`, 'Ask about this'),
+        h('span', {class: 'sp'}), remove));
     // after a save the table is redrawn, so the opener is a new element: focus goes to its successor
     const back = () => (opener.isConnected ? opener : (opts.again && document.querySelector(opts.again)) || $('page'));
     let stop = () => {};
@@ -4477,6 +4560,7 @@
         h('button', {class: 'btn ghost sm', type: 'button', onclick: () => openAdd(`edit:${d.id}`)}, icon('pencil'), 'Edit'),
         h('button', {class: 'btn ghost sm', type: 'button', disabled: !t.can_refresh, title: t.can_refresh ? null : isoDays(t.refresh_note || ''),
           onclick: (e) => assetAct(e, `/api/manual/${d.id}/refresh`, {}, (res) => estimateToast(res, 'Refreshed.'))}, icon('refresh'), 'Refresh estimate'),
+        askAboutBtn(`Tell me about my ${d.name} account and how its value has changed, as of ${askMonth()}.`),
         h('span', {class: 'sp'}),
         h('button', {class: 'btn danger sm', type: 'button', onclick: ask}, icon('archive'), 'Archive')));
   }
@@ -4893,8 +4977,31 @@
     return card({cls: 's3', title: 'All debts', icon: 'sort', rgb: RGB.grey, extra: small(plural(items.length, 'account'))}, tabs, tip, list);
   }
 
+  // ---------- More (phone) -----------------------------------------------------------------------
+  // The phone "More" tab: every route grouped as in the command-center sidebar (Daily, Worth), plus Settings. On a
+  // desktop the sidebar already shows all of these, so this page is really for phones; it navigates, it writes nothing.
+  const MORE_GROUPS = [['Daily', [['overview', 'Overview', 'grid'], ['transactions', 'Transactions', 'swap'],
+    ['budgets', 'Budgets', 'target'], ['recurring', 'Recurring', 'repeat']]],
+  ['Worth', [['accounts', 'Accounts', 'landmark'], ['investments', 'Investments', 'linechart'],
+    ['debt', 'Loans & debt', 'handcoins'], ['goals', 'Goals', 'flag']]]];
+  function moreLink(key, label, ic) {
+    return h('a', {class: 'morelink', href: hashFor(key, {})}, ibadge(ic, RGB.acc), h('span', {class: 'grow'}, label),
+      h('span', {class: 'n', 'data-count': key}), icon('chevr'));
+  }
+  function renderMore(tk) {
+    const groups = MORE_GROUPS.map(([title, rows]) =>
+      card({title, icon: title === 'Daily' ? 'repeat' : 'landmark', rgb: RGB.grey},
+        h('div', {class: 'morelist'}, rows.filter(([k]) => has(RENDER, k)).map(([k, l, ic]) => moreLink(k, l, ic)))));
+    const settings = has(RENDER, 'settings')
+      ? card({title: 'Settings', icon: 'gear', rgb: RGB.grey},
+        h('div', {class: 'morelist'}, moreLink('settings', 'Settings', 'gear'))) : null;
+    fill($('page'), h('div', {class: 'grid'}, groups, settings));
+    loadCounts();  // the per-route badges (Needs review, over budget) mirror the sidebar
+  }
+
   const RENDER = {overview: renderOverview, transactions: renderTransactions, budgets: renderBudgets,
-    recurring: renderRecurring, accounts: renderAccounts, investments: renderInvestments, debt: renderDebt, asset: renderAsset};
+    recurring: renderRecurring, accounts: renderAccounts, investments: renderInvestments, debt: renderDebt,
+    asset: renderAsset, more: renderMore};
   const BOARDS = new Set();  // pages drawn without the sidebar, top bar and tab bar (first-run setup)
 
   // ---------- boot -----------------------------------------------------------------------------
@@ -4989,6 +5096,7 @@
     api, post, show, PAGES, S, RENDER, BOARDS, HOOKS, TX, KIND, openSheet, closeModal, closeBtn, backBtn, modal, trapFocus,
     help, helpBills, toast, hideToast, card, small, msgBox, emptyNote, ghostRow, skel, skeleton, errorCard, pack, lnk, hashFor, parseHash,
     route, refresh, syncNow, ensureAccounts, ensureCategories, loadAccounts, loadCounts, parseAmount, reloadBudgets, updateTx, loadTx,
+    askAbout, askAboutBtn, askEnabled, askMonth,
     txParams, txWindowParams, txFiltered, slotInfo, opt, openAdd, connectBank, notCounted, leftOut, worthOf, customMode, applyCap, capEditor,
     field: (...a) => field(...a), checkField: (...a) => checkField(...a)};
   for (const ext of window.HF_EXT || []) {

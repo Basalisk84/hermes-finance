@@ -1,0 +1,23 @@
+# Keep the build context small and secret-free. Only pyproject/uv.lock/README, src/ and deploy/ are needed.
+.git
+.github
+.venv
+**/__pycache__
+**/*.pyc
+data
+*.db
+*.db-wal
+*.db-shm
+.env
+.env.*
+.private-words
+tests
+docs
+demo
+assets
+scripts
+site
+.pytest_cache
+.ruff_cache
+.mypy_cache
+*.backup.jsonl

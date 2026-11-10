@@ -1,0 +1,35 @@
+/* The transaction-review workflow (#/review): one card, one unresolved transaction at a time. */
+.rv-top { display: flex; align-items: center; gap: 12px; }
+.rv-skip { display: inline-flex; align-items: center; gap: 2px; background: none; border: 0; color: var(--dim); font: inherit;
+  font-size: 14px; cursor: pointer; padding: 4px; border-radius: 8px; min-height: 32px; }
+.rv-skip:hover { color: var(--fg); }
+.rv-skip svg { width: 16px; height: 16px; }
+.rv-bar { height: 6px; border-radius: 4px; background: #0e1118; box-shadow: inset 0 0 0 1px #1d2330; overflow: hidden; margin: 2px 0 16px; }
+.rv-bar i { display: block; height: 100%; border-radius: 4px; background: linear-gradient(90deg, #6f8cff, #8ea8ff); }
+.rv-card { display: flex; flex-direction: column; gap: 16px; }
+.rv-id { display: flex; align-items: center; gap: 12px; }
+.rv-m { font-size: 18px; font-weight: 650; letter-spacing: -.01em; display: block; }
+.rv-sub { display: block; font-size: 13px; color: var(--mut); white-space: normal; }
+.rv-amt { font-size: 22px; font-weight: 700; letter-spacing: -.02em; margin-left: auto; white-space: nowrap; }
+.rv-amt.pos { color: var(--ok); }
+.rv-facts { display: grid; grid-template-columns: auto 1fr; gap: 6px 18px; margin: 0; font-size: 14px; }
+.rv-facts dt { color: var(--dim); }
+.rv-facts dd { margin: 0; color: var(--fg); }
+.rv-pick { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.rv-lab { font-size: 14px; color: var(--dim); font-weight: 600; }
+.rv-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.rv-actions > .btn { flex: 1 1 auto; justify-content: center; min-height: 44px; }
+.rv-confirm { flex: 1 1 100%; border: 1px solid rgba(245, 180, 84, .38); background: rgba(245, 180, 84, .08);
+  border-radius: 14px; padding: 12px 14px; }
+.rv-confirm p { margin: 0 0 12px; font-size: 14px; }
+.rv-confirm-btns { display: flex; gap: 10px; flex-wrap: wrap; }
+.rv-confirm-btns > .btn { flex: 1 1 auto; justify-content: center; min-height: 44px; }
+.rv-done { display: flex; flex-direction: column; align-items: center; gap: 14px; text-align: center; padding: 22px 10px; }
+.rv-done svg { width: 34px; height: 34px; color: var(--ok); }
+.rv-done p { margin: 0; font-size: 15px; color: var(--mut); }
+
+@media (max-width: 600px) {
+  .rv-id { flex-wrap: wrap; }
+  .rv-amt { margin-left: 0; width: 100%; font-size: 24px; }
+  .rv-actions > .btn, .rv-confirm-btns > .btn { flex: 1 1 100%; }
+}

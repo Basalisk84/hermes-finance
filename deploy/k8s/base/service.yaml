@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: hermes-finance
+  labels:
+    app.kubernetes.io/name: hermes-finance
+spec:
+  # ClusterIP by default: nothing outside the cluster reaches it except through the ingress/edge proxy. The homelab
+  # overlay may switch this to NodePort for an off-cluster Traefik — which then REQUIRES the host-firewall restriction
+  # documented in deploy/README.md, because a NodePort can bypass pod-level NetworkPolicy.
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: hermes-finance
+  ports:
+    # The Service targets the reverse-proxy sidecar only (port 8080), never the app's loopback 8765.
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP

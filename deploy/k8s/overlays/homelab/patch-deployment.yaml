@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hermes-finance
+spec:
+  template:
+    spec:
+      # Pin to the node whose disk holds the shared data directory (the hostPath below is node-local). The value here
+      # is a placeholder; copy this overlay to an untracked local overlay and set your real node name (see README).
+      nodeSelector:
+        kubernetes.io/hostname: homelab-node
+      securityContext:
+        runAsNonRoot: true
+        # IMPORTANT: must equal the UID/GID that owns the shared data directory on the host (the user the host Hermes
+        # plugin runs as), so the container and the host plugin share one finance.db and the 0700/0600 permissions hold.
+        # Run `id -u <owner>` / `id -g <owner>` on the node and set these; fsGroup is removed (see kustomization.yaml)
+        # so kubelet never recursively chowns the shared host directory.
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: finance
+          env:
+            # The edge's trusted identity header, the allowed login, and the public URL. No secret here; identity is
+            # repopulated at the edge after inbound Remote-* is stripped (see deploy/README.md). These are placeholder
+            # example values; set your real ones in an untracked local overlay (see README).
+            - name: FINANCE_PROXY_HEADER
+              value: "Remote-User"
+            - name: FINANCE_ALLOWED_USERS
+              value: "you"
+            - name: FINANCE_PUBLIC_URLS
+              value: "https://finance.example.invalid"
+      volumes:
+        # Replace the base emptyDir with the shared host directory. One finance.db for the host Hermes plugin and the
+        # containerised app. The host directory is created 0700 and owned by the host user; the app keeps files 0600.
+        # The path is a placeholder; point it at your real data directory in an untracked local overlay (see README).
+        - name: data
+          emptyDir: null
+          hostPath:
+            path: /srv/hermes-finance/data
+            type: Directory

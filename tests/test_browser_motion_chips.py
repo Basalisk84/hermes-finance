@@ -3,8 +3,9 @@ on a throwaway loopback server.
 
 Motion A: the bars refill and the charts grow (400ms) on a page switch and a month switch, not on a refresh in place,
 and never under prefers-reduced-motion. Before it, the bars filled once per session and the charts never animated.
-Alert chips: an even grid (2 columns on a desktop, 1 on a phone) instead of content-width chips in ragged rows, with the
-broken connection (the one with a Reconnect button) first.
+Needs attention: one prioritized card (it replaced the competing alert strip), ordered bank reconnect → overdue/due
+bill → transaction review → budget warning, with the broken connection (the one with a Reconnect button) first and the
+rest under an accessible View all expansion.
 
 The demo DB is built for the fixed day below and the browser's clock is pinned to it (Chrome.pin_clock): the Overview takes
 "this month" from `new Date()`, so unpinned the page asked for the month the gate itself ran in and, from 2026-11-01 on,
@@ -117,42 +118,39 @@ def test_reduced_motion_never_animates_bars_or_charts(browser, site):
     browser.call("Emulation.setEmulatedMedia", features=[{"name": "prefers-reduced-motion", "value": "no-preference"}])
 
 
-CHIPS = """(() => { const s = document.querySelector('#page .alerts'); const sr = s.getBoundingClientRect();
-  return {display: getComputedStyle(s).display, left: sr.left, right: sr.right,
-    chips: [...s.children].map((c) => { const r = c.getBoundingClientRect();
-      return {tag: c.tagName, cls: c.className, top: Math.round(r.top), left: r.left, right: r.right, w: r.width,
-              clipped: c.scrollWidth > c.clientWidth + 1, reconnect: !!c.querySelector('button')}; })}; })()"""
+# The one prioritized "Needs attention" card (it replaced the competing alert strip). Expand "View all" so every item
+# is measured, and report whether the first item is the broken connection (the one that needs you, with a Reconnect
+# button).
+ATTN = """(() => {
+  const card = document.querySelector('#page .attention');
+  if (!card) return null;
+  const details = card.querySelector('details.attn-more');
+  if (details) details.open = true;
+  const cr = card.getBoundingClientRect();
+  const items = [...card.querySelectorAll('.attn')].map((c) => { const r = c.getBoundingClientRect();
+    return {cls: c.className, top: Math.round(r.top), left: r.left, right: r.right, w: r.width,
+            clipped: c.scrollWidth > c.clientWidth + 1, reconnect: !!c.querySelector('button.rc')}; });
+  return {left: cr.left, right: cr.right, hasDetails: !!details, items}; })()"""
 
 
-def strip_count(d: dict) -> int:
-    """How many chips the Overview's strip holds for this month's payload (app.js alertsStrip): its cap and connection
-    alerts, the cards with a minimum due, and the one "all healthy" line when nothing is broken."""
-    return len(d["alerts"]) + len(d["cards_due"] or []) + (0 if d["connections"]["broken"] else 1)
-
-
-def test_desktop_alert_chips_are_an_even_two_column_grid_broken_connection_first(browser, site):
+def test_needs_attention_is_one_prioritized_card_reconnect_first(browser, site):
     load(browser, site)
-    s = browser.js(CHIPS)
-    chips = s["chips"]
-    want = strip_count(site.api("/api/overview", month=MONTH))   # the fixture's month: what the page must be showing
-    assert s["display"] == "grid" and len(chips) == want, (len(chips), want, s)
-    assert want >= 3, want                                        # the two cap alerts are in there, not just a connection
-    assert chips[0]["tag"] == "DIV" and chips[0]["reconnect"], chips[0]   # the one that needs you comes first
-    rows = {}
-    for c in chips:
-        rows.setdefault(c["top"], []).append(c)
-    full = [r for r in rows.values() if len(r) == 2]
-    assert full, rows                                                     # 2 columns at 1440
-    for r in full:                                                        # equal widths, flush with both edges
-        assert abs(r[0]["w"] - r[1]["w"]) <= 1, r
-        assert abs(r[0]["left"] - s["left"]) <= 1 and abs(r[1]["right"] - s["right"]) <= 1, (r, s)
-    assert not any(c["clipped"] for c in chips), chips
-
-
-def test_phone_alert_chips_are_one_full_width_column(browser, site):
-    load(browser, site, width=390)
-    s = browser.js(CHIPS)
-    assert len({c["top"] for c in s["chips"]}) == len(s["chips"])          # one per row
-    for c in s["chips"]:
-        assert abs(c["left"] - s["left"]) <= 1 and abs(c["right"] - s["right"]) <= 1, (c, s)
+    s = browser.js(ATTN)
+    assert s is not None, "the Overview shows the Needs attention card"
+    items = s["items"]
+    assert len(items) >= 2, items                                # the fixture has a broken bank plus budget warnings
+    assert items[0]["reconnect"], items[0]                       # the broken connection comes first
+    assert s["hasDetails"], "more than one item, so there is a View all expansion"
+    assert len({c["top"] for c in items}) == len(items)          # one prioritized column, not a ragged grid
+    for c in items:                                              # within the card, nothing clipped
         assert not c["clipped"], c
+        assert c["left"] >= s["left"] - 0.5 and c["right"] <= s["right"] + 0.5, (c, s)
+
+
+def test_needs_attention_fits_the_phone_width(browser, site):
+    load(browser, site, width=390)
+    s = browser.js(ATTN)
+    assert s is not None
+    for c in s["items"]:
+        assert not c["clipped"], c
+        assert c["left"] >= -0.5 and c["right"] <= 390 + 0.5, c   # no horizontal overflow at 390px
