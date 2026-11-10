@@ -93,8 +93,8 @@ FEATURE_FILES = ("goals", "txmeta", "billcal", "rollover", "alpaca", "bills",   
                  "catpick",                                                       # + polish P0's category picker
                  "txfilter",                                                       # + polish P1's Transactions filters
                  "wherewent",                                                      # + polish P2b's grouped spending card
-                 "budgets",                                                         # + polish P2A's grouped Budgets
-                 "review")                                                          # + the focused transaction-review workflow
+                 "review",                                                          # + the focused transaction-review workflow
+                 "budgets")                                                         # + polish P2A's grouped Budgets (stays last)
 STATIC_FILES.update({f"{n}.js": "text/javascript; charset=utf-8" for n in FEATURE_FILES})
 STATIC_FILES.update({f"{n}.css": "text/css; charset=utf-8" for n in FEATURE_FILES})
 # Root paths browsers ask for on their own -> the static file they get.

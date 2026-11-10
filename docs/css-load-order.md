@@ -19,10 +19,11 @@ The app page (`web.render_page`):
 9. `catpick.css`
 10. `txfilter.css`
 11. `wherewent.css`
-12. `budgets.css`
-13. `settings.css`
-14. `light.css`
-15. `tap.css`
+12. `review.css`
+13. `budgets.css`
+14. `settings.css`
+15. `light.css`
+16. `tap.css`
 
 Sheets 2 to 12 are the feature sheets, in `web.FEATURE_FILES` order. Each entry there also loads its `.js`, so a
 feature sheet always comes with a script of the same name.

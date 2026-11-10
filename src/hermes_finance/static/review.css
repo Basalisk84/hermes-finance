@@ -5,8 +5,7 @@
 .rv-skip:hover { color: var(--fg); }
 .rv-skip svg { width: 16px; height: 16px; }
 .rv-bar { height: 6px; border-radius: 4px; background: #0e1118; box-shadow: inset 0 0 0 1px #1d2330; overflow: hidden; margin: 2px 0 16px; }
-.rv-bar i { display: block; height: 100%; border-radius: 4px; background: linear-gradient(90deg, #6f8cff, #8ea8ff);
-  transition: width var(--mo-bars, 420ms) var(--mo-in, ease-out); }
+.rv-bar i { display: block; height: 100%; border-radius: 4px; background: linear-gradient(90deg, #6f8cff, #8ea8ff); }
 .rv-card { display: flex; flex-direction: column; gap: 16px; }
 .rv-id { display: flex; align-items: center; gap: 12px; }
 .rv-m { font-size: 18px; font-weight: 650; letter-spacing: -.01em; display: block; }
