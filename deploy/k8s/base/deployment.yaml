@@ -1,0 +1,128 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hermes-finance
+  labels:
+    app.kubernetes.io/name: hermes-finance
+spec:
+  # Single replica, one SQLite database on one volume; never two writers.
+  replicas: 1
+  strategy:
+    # Recreate (not RollingUpdate): the old Pod releases the volume and the WAL lock before the new one starts.
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: hermes-finance
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: hermes-finance
+    spec:
+      # The app needs no Kubernetes API access.
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        # --- the finance app: binds 127.0.0.1 only; never exposed to the Service directly -------------------------
+        - name: finance
+          image: hermes-finance:local
+          imagePullPolicy: IfNotPresent
+          command: ["/usr/local/bin/entrypoint.sh"]
+          env:
+            - name: FINANCE_DATA_DIR
+              value: /data
+            - name: HERMES_FINANCE_FINANCE_HOST
+              value: "127.0.0.1"
+            - name: HERMES_FINANCE_FINANCE_PORT
+              value: "8765"
+            # Hard off switches read straight from the process environment (plaid.py / alpaca.py / cdp_client.py).
+            # The keyless valuation sources (Carfax, Redfin, photos), MCP and the API-key AI brain are turned off in
+            # the database by `finance homelab-init` in the entrypoint — their process-env flags are only honoured in
+            # Hermes credential mode, so the authoritative disable is the stored setting.
+            - name: HERMES_PLAID
+              value: "off"
+            - name: HERMES_ALPACA
+              value: "off"
+            - name: HERMES_CHROME_DEVTOOLS
+              value: "off"
+            - name: HOME
+              value: /tmp
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          livenessProbe:
+            exec:
+              command: ["finance", "doctor"]
+            initialDelaySeconds: 20
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: tmp
+              mountPath: /tmp
+        # --- the reverse-proxy sidecar: the only Service target -------------------------------------------------
+        - name: proxy
+          image: nginxinc/nginx-unprivileged:1.27-alpine
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 20
+          volumeMounts:
+            - name: proxy-conf
+              mountPath: /etc/nginx/nginx.conf
+              subPath: nginx.conf
+              readOnly: true
+            - name: proxy-tmp
+              mountPath: /tmp
+      volumes:
+        # Default (overridden by the homelab overlay to the shared hostPath). emptyDir keeps the base self-contained
+        # and testable; it holds no data across a Pod restart, so production MUST supply a real volume.
+        - name: data
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+        - name: proxy-tmp
+          emptyDir: {}
+        - name: proxy-conf
+          configMap:
+            name: hermes-finance-proxy

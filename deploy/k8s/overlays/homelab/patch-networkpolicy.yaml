@@ -1,0 +1,16 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: hermes-finance
+spec:
+  ingress:
+    # Only Traefik (the homelab edge at 10.2.0.200) may reach the sidecar. Everything else is denied.
+    # This governs pod-level traffic; if the Service is exposed as a NodePort, ALSO apply the host-firewall rule in
+    # deploy/README.md, because NodePort DNAT can bypass this policy. If neither can be guaranteed, fail closed by
+    # switching access.mode to builtin (built-in login) so a forged Remote-User alone cannot get in.
+    - from:
+        - ipBlock:
+            cidr: 10.2.0.200/32
+      ports:
+        - protocol: TCP
+          port: 8080

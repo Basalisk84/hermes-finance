@@ -221,6 +221,10 @@ RELEASE_EXEMPT: List[Tuple[str, str, Optional[str], str]] = [
      "a made-up job id the crons test plants to prove its own leak check catches a 12-hex id"),
     ("tests/test_valuation.py", "hex-id", r"^82633a" r"004352$",
      "the tail of the textbook sample VIN 1HGCM82633A004352, spaced out to test VIN clean-up: not an id"),
+    ("deploy/*", "personal-path", r"^/home/" r"basalisk$",   # (split: this file holds no contiguous home path itself)
+     "the homelab overlay's documented hostPath for the shared finance.db under the basalisk home directory: an "
+     "infrastructure directory on the private homelab node, deliberately named in the deployment manifests and their "
+     "docs, never a person's home contents or a secret (task 237af77f)"),
 ]
 # What ships: in a development checkout, scripts/public_allowlist.txt (the public export's rules) decides, so
 # `--release-tracked` / `--release-staged` scan exactly what the export would hold. Where that file isn't (a released

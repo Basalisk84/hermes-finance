@@ -1,0 +1,26 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: hermes-finance
+  labels:
+    app.kubernetes.io/name: hermes-finance
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: hermes-finance
+  policyTypes:
+    - Ingress
+    - Egress
+  # Base posture: deny all ingress (no `from:` rule). The homelab overlay adds the single allowed source (Traefik).
+  # NOTE: a NetworkPolicy governs traffic that reaches the Pod. Traffic DNAT'd by a NodePort may bypass it at the host
+  # level depending on the CNI, which is why the overlay also documents a host-firewall rule and a fail-closed fallback.
+  ingress: []
+  egress:
+    # DNS so the app can resolve names (it still phones nothing out: Plaid/Alpaca/AI are off).
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53

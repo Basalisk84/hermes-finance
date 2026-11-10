@@ -1076,6 +1076,16 @@ def build_parser() -> argparse.ArgumentParser:
     _add_settings_commands(sub)
     _add_task19_commands(sub)
     _add_rules_commands(sub)   # TASK-24
+    s = sub.add_parser("homelab-init", help="seed DB settings for a reverse-proxied container deployment "
+                       "(proxy mode via Remote-User; MCP, API AI and valuations off)",
+                       epilog=HOMELAB_INIT_EPILOG, formatter_class=argparse.RawDescriptionHelpFormatter)
+    s.add_argument("--proxy-header", default="Remote-User",
+                   help="the trusted identity header the edge proxy sets (default Remote-User)")
+    s.add_argument("--allow-user", action="append", metavar="LOGIN",
+                   help="an allowed proxy identity (repeatable; also FINANCE_ALLOWED_USERS)")
+    s.add_argument("--public-url", action="append", metavar="URL",
+                   help="a public URL the proxy forwards for (repeatable; also FINANCE_PUBLIC_URLS)")
+    s.set_defaults(func=cmd_homelab_init)
     return p
 
 
@@ -1508,6 +1518,56 @@ def cmd_access(args) -> int:
             emit(f"  trusted header: {acc.header}; public URLs: {', '.join(acc.public_urls) or 'none'}")
             emit(f"  allowed identities: {', '.join(access.mask(u) for u in sorted(acc.identities)) or 'none'}")
         emit(f"  built-in login: {'set up' if auth.configured(conn) else 'not set up'}")
+    return 0
+
+
+HOMELAB_INIT_EPILOG = """Seed the database settings a reverse-proxied container deployment needs, idempotently (safe to
+run on every start of the Pod): the access mode is "Behind your proxy login", the trusted identity header is the one the
+edge sets (Remote-User by default), the allowed logins and public URLs are merged in, and MCP, the API-key AI brain and
+the keyless valuation sources (Carfax, Redfin, photos) are turned off. The app still binds 127.0.0.1 only in proxy mode,
+so the forward-auth proxy must reach it over loopback (a same-Pod sidecar). No network call, no secret is read or
+written. See deploy/ for the container and Kubernetes artifacts.
+
+  finance homelab-init --allow-user jon --public-url https://money.example.net
+  FINANCE_ALLOWED_USERS=jon FINANCE_PUBLIC_URLS=https://money.example.net finance homelab-init"""
+
+
+def cmd_homelab_init(args) -> int:
+    from . import access, prefs
+    from .web import parse_public_url
+
+    users = [u for u in (args.allow_user or []) if u.strip()] + config.env_list("FINANCE_ALLOWED_USERS")
+    urls = [u for u in (args.public_url or []) if u.strip()] + config.env_list("FINANCE_PUBLIC_URLS")
+    for url in urls:
+        try:
+            parse_public_url(url)
+        except ValueError as e:
+            emit(f"error: {e}", sys.stderr)
+            return 2
+    try:
+        header = prefs.SPEC["access.proxy_header"].check(args.proxy_header)
+    except prefs.PrefError as e:
+        emit(f"error: proxy header {e}", sys.stderr)
+        return 2
+    with db.connect() as conn:
+        ids = list(dict.fromkeys([*prefs.get(conn, "access.allowed_identities"),
+                                  *(access.canonical_identity(u) for u in users)]))
+        if not ids:
+            emit("error: no allowed identity (pass --allow-user LOGIN or set FINANCE_ALLOWED_USERS); the proxy mode "
+                 "lets nobody in without one", sys.stderr)
+            return 2
+        all_urls = list(dict.fromkeys([*prefs.get(conn, "access.public_urls"), *urls]))
+        values = {"access.mode": "proxy", "access.proxy_header": header, "access.allowed_identities": ids,
+                  "access.public_urls": all_urls, "mcp.enabled": False, "ai.mode": "off",
+                  "valuations.carfax": False, "valuations.redfin": False, "valuations.photos": False}
+        try:
+            prefs.save(conn, values, allowed=list(values))
+        except prefs.PrefError as e:
+            emit(f"error: {e}", sys.stderr)
+            return 2
+    emit(f"homelab: proxy mode via {header}; MCP off; API AI off; Carfax, Redfin and photos off")
+    emit(f"  allowed identities: {', '.join(access.mask(u) for u in sorted(ids))}")
+    emit(f"  public URLs: {', '.join(all_urls) or 'none (set --public-url / FINANCE_PUBLIC_URLS)'}")
     return 0
 
 

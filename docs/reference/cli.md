@@ -47,18 +47,19 @@ Every `finance` command, with its `--help` exactly as the code prints it. Run th
 | [`backup`](#finance-backup) | write a backup of the database, every credential taken out (as Settings > Backup) |
 | [`restore`](#finance-restore) | replace the database with a backup (checked first; the old one is moved aside) |
 | [`rules`](#finance-rules) | categorization rules: list, suggestions, delete |
+| [`homelab-init`](#finance-homelab-init) | seed DB settings for a reverse-proxied container deployment (proxy mode via Remote-User; MCP, API AI and valuations off) |
 
 ## `finance` {#finance}
 
 ```text
 usage: finance [-h] [-v]
-               {serve,sync,status,query,export,classify-apply,unclassified,set-category,add-rule,ai-queue,ai-apply,manual,networth-custom,account-policy,match-payments,loan-match,loan-apply,loan-unapply,revalue,photos,api-usage,refresh-institutions,refresh-logos,spend,budget-status,txns,networth,bills,loans,holdings,cashflow,mcp,settings,access,goals,alpaca-sync,doctor,backup,restore,rules}
+               {serve,sync,status,query,export,classify-apply,unclassified,set-category,add-rule,ai-queue,ai-apply,manual,networth-custom,account-policy,match-payments,loan-match,loan-apply,loan-unapply,revalue,photos,api-usage,refresh-institutions,refresh-logos,spend,budget-status,txns,networth,bills,loans,holdings,cashflow,mcp,settings,access,goals,alpaca-sync,doctor,backup,restore,rules,homelab-init}
                ...
 
 Plaid -> local SQLite budgeting pipeline
 
 positional arguments:
-  {serve,sync,status,query,export,classify-apply,unclassified,set-category,add-rule,ai-queue,ai-apply,manual,networth-custom,account-policy,match-payments,loan-match,loan-apply,loan-unapply,revalue,photos,api-usage,refresh-institutions,refresh-logos,spend,budget-status,txns,networth,bills,loans,holdings,cashflow,mcp,settings,access,goals,alpaca-sync,doctor,backup,restore,rules}
+  {serve,sync,status,query,export,classify-apply,unclassified,set-category,add-rule,ai-queue,ai-apply,manual,networth-custom,account-policy,match-payments,loan-match,loan-apply,loan-unapply,revalue,photos,api-usage,refresh-institutions,refresh-logos,spend,budget-status,txns,networth,bills,loans,holdings,cashflow,mcp,settings,access,goals,alpaca-sync,doctor,backup,restore,rules,homelab-init}
     serve               local budgeting dashboard; connect / reconnect banks
     sync                pull transactions, balances, liabilities, holdings
     status              items, accounts, balances, errors, slots used
@@ -109,6 +110,8 @@ positional arguments:
     restore             replace the database with a backup (checked first; the old one is moved
                         aside)
     rules               categorization rules: list, suggestions, delete
+    homelab-init        seed DB settings for a reverse-proxied container deployment (proxy mode
+                        via Remote-User; MCP, API AI and valuations off)
 
 options:
   -h, --help            show this help message and exit
@@ -1226,4 +1229,28 @@ positional arguments:
 
 options:
   -h, --help  show this help message and exit
+```
+
+## `finance homelab-init` {#finance-homelab-init}
+
+```text
+usage: finance homelab-init [-h] [--proxy-header PROXY_HEADER] [--allow-user LOGIN]
+                            [--public-url URL]
+
+options:
+  -h, --help            show this help message and exit
+  --proxy-header PROXY_HEADER
+                        the trusted identity header the edge proxy sets (default Remote-User)
+  --allow-user LOGIN    an allowed proxy identity (repeatable; also FINANCE_ALLOWED_USERS)
+  --public-url URL      a public URL the proxy forwards for (repeatable; also FINANCE_PUBLIC_URLS)
+
+Seed the database settings a reverse-proxied container deployment needs, idempotently (safe to
+run on every start of the Pod): the access mode is "Behind your proxy login", the trusted identity header is the one the
+edge sets (Remote-User by default), the allowed logins and public URLs are merged in, and MCP, the API-key AI brain and
+the keyless valuation sources (Carfax, Redfin, photos) are turned off. The app still binds 127.0.0.1 only in proxy mode,
+so the forward-auth proxy must reach it over loopback (a same-Pod sidecar). No network call, no secret is read or
+written. See deploy/ for the container and Kubernetes artifacts.
+
+  finance homelab-init --allow-user jon --public-url https://money.example.net
+  FINANCE_ALLOWED_USERS=jon FINANCE_PUBLIC_URLS=https://money.example.net finance homelab-init
 ```
