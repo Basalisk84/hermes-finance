@@ -20,8 +20,9 @@ ENV UV_PYTHON_DOWNLOADS=never \
 
 WORKDIR /app
 
-# Dependency layer first (cached until the lock or manifest changes). README.md is referenced by pyproject metadata.
-COPY pyproject.toml uv.lock README.md ./
+# Dependency layer first (cached until the lock or manifest changes). README.md and LICENSE are both referenced by
+# pyproject metadata (`readme` and `license-files`), so the project build needs them present.
+COPY pyproject.toml uv.lock README.md LICENSE ./
 RUN uv sync --frozen --no-dev --no-install-project
 
 # Then the application itself. No optional extras: `mcp` and `photos` are deliberately absent (MCP returns 501,

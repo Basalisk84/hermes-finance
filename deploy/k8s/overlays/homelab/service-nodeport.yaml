@@ -1,11 +1,11 @@
 # OPT-IN, NOT APPLIED BY DEFAULT.
 #
 # The default Service is ClusterIP, which an in-cluster Traefik reaches and a pod-level NetworkPolicy fully governs —
-# the fail-closed default. Use this NodePort ONLY if your Traefik runs off-cluster (e.g. the homelab edge at
-# 10.2.0.200) and must reach the K3s node directly. A NodePort can bypass pod-level NetworkPolicy via kube-proxy DNAT,
-# so Kubernetes alone CANNOT prove that only 10.2.0.200 reaches it. Before enabling this you MUST:
+# the fail-closed default. Use this NodePort ONLY if your Traefik runs off-cluster (e.g. the edge at a placeholder
+# example 192.0.2.10) and must reach the K3s node directly. A NodePort can bypass pod-level NetworkPolicy via
+# kube-proxy DNAT, so Kubernetes alone CANNOT prove that only the edge reaches it. Before enabling this you MUST:
 #
-#   1. Add the host-firewall rule on the node so only 10.2.0.200 may reach the NodePort (see deploy/README.md), and
+#   1. Add the host-firewall rule on the node so only the edge may reach the NodePort (see deploy/README.md), and
 #   2. If you cannot guarantee that, DO NOT use proxy mode here: fail closed by switching access.mode to builtin
 #      (built-in login) so a forged Remote-User header alone cannot get in (`finance access mode builtin` after setup).
 #

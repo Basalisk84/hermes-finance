@@ -1,8 +1,10 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-# Homelab overlay: pins the generic base to the real node, shared volume, proxy identity and network restriction for
-# https://money.basalisk.net. No secret is present in Git, a ConfigMap, an image layer, or a command argument.
+# Homelab overlay: pins the generic base to a node, a shared volume, a proxy identity and a network restriction for a
+# reverse-proxied deployment. The node name, hostPath, allowed user, public URL and edge CIDR here are placeholder
+# EXAMPLE values — copy this overlay to an untracked local overlay and fill in your real values (see deploy/README.md).
+# No secret is present in Git, a ConfigMap, an image layer, or a command argument.
 namespace: finance
 
 resources:

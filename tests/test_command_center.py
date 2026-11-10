@@ -112,6 +112,43 @@ def test_review_requires_explicit_confirmation_for_a_rule():
     assert "Create rule" in draw
 
 
+# --- review completion correctness (correction task 27aca420): the batch is a capped window, not the whole queue ------
+def test_review_refetches_before_declaring_completion():
+    # When the in-memory batch is exhausted, draw() must refetch the queue (advance), not declare completion straight
+    # from the batch. This catches the 200-row-cap false completion: a full batch can hide more unresolved rows.
+    draw = fn(REVIEW, "draw")
+    assert "advance()" in draw, "an exhausted batch confirms against the server before finishing"
+    assert "doneCard(" not in draw, "draw() never renders the done card directly; only advance() may"
+    advance = fn(REVIEW, "advance")
+    assert "api('/api/transactions'" in advance and "kind: 'review'" in advance   # refetch the unresolved queue
+    assert "doneCard(" in advance                                                 # completion is declared here only
+    # a non-empty refetch resumes the workflow instead of ending it
+    assert "ST.rows = fresh" in advance and "ST.idx = 0" in advance
+
+
+def test_review_skipping_is_not_resolution():
+    # Skipping a row must never be counted as reviewed. Skipped ids are tracked and excluded from the refetch so they
+    # do not loop back, and the done message is skip-aware: it never claims "every transaction is reviewed".
+    skip = fn(REVIEW, "skip")
+    assert "ST.skipped.add(t.transaction_id)" in skip, "a skip records the row as unresolved, not reviewed"
+    assert "ST.resolved" not in skip, "a skip must not touch the resolved count"
+    advance = fn(REVIEW, "advance")
+    assert "!ST.skipped.has(r.transaction_id)" in advance, "skipped rows are left out of the refetch, not re-shown"
+    # the completion copy only claims everything is reviewed when nothing was skipped
+    done = fn(REVIEW, "doneCard")
+    assert "every transaction is reviewed" in done
+    assert "skipped" in done and "still waiting" in done
+    assert "skipped === 0 && resolved > 0" in done, "the 'all reviewed' state excludes any skipped row"
+
+
+def test_review_resets_per_session_resolved_and_skipped_on_fresh_render():
+    # A fresh render starts a new session: the resolved count and the skipped set must reset, or a later done card
+    # inherits a stale 'cleared' state from a previous visit.
+    render = fn(REVIEW, "renderReview")
+    assert "ST.resolved = 0" in render, "resolved resets on a fresh render"
+    assert "ST.skipped = new Set()" in render, "the skipped set resets on a fresh render"
+
+
 # --- contextual "Ask about this" -------------------------------------------------------------------------------------
 def test_ask_prefill_opens_without_sending_and_respects_off():
     # chat.js exposes prefill; it fills the composer but never calls the send path on its own

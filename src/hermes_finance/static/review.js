@@ -3,21 +3,28 @@
  * ("Always…") always asks for an explicit confirmation first; nothing is written until then. Saving advances to the
  * next item. It reuses /api/transactions?kind=review to read and /api/transactions/category to write (make_rule the
  * only difference between the two buttons), so every number and every write stays on the one source. Loaded before
- * app.js; every bank/user string goes in as text (h()), never as markup. */
+ * app.js; every bank/user string goes in as text (h()), never as markup.
+ *
+ * The read is capped (limit 200), so a batch is only part of the queue. Completion is never declared from the batch
+ * alone: when the in-memory batch is exhausted the queue is refetched, and only an empty refetch (ignoring the rows
+ * the user chose to skip this session) ends the workflow. Skipping is not resolution — a skipped row stays unresolved
+ * and never counts as reviewed. */
 (window.HF_EXT = window.HF_EXT || []).push((X) => {
   'use strict';
   const {$, h, fill, icon, glyph, plural, signed, money, api, post, S, PAGES, RENDER, HOOKS, card, small, skeleton,
     errorCard, toast, avatar, badge, nameMask, ensureCategories, loadCounts, route, RGB, askAboutBtn, askMonth} = X;
 
   PAGES.review = 'Review';
-  const ST = {rows: [], idx: 0, cats: [], sel: null, confirming: false, busy: false};
+  const LIMIT = 200;   // the read cap; the queue can be longer, so completion is confirmed by a refetch, not the batch
+  const ST = {rows: [], idx: 0, cats: [], sel: null, confirming: false, busy: false, resolved: 0,
+    skipped: new Set(), tk: null};
 
   async function renderReview(tk) {
     const page = $('page');
     fill(page, skeleton(['card']));
     let data, cats;
     try {
-      [data, cats] = await Promise.all([api('/api/transactions', {kind: 'review', limit: 200}), ensureCategories()]);
+      [data, cats] = await Promise.all([api('/api/transactions', {kind: 'review', limit: LIMIT}), ensureCategories()]);
     } catch (e) {
       if (tk === S.token) fill(page, errorCard(e, () => route()));
       return;
@@ -28,13 +35,53 @@
     ST.idx = 0;
     ST.confirming = false;
     ST.busy = false;
+    ST.resolved = 0;              // a fresh render starts a new session: nothing resolved, nothing skipped yet
+    ST.skipped = new Set();
+    ST.tk = tk;
     draw();
   }
 
-  function doneCard(cleared) {
-    return card({title: 'Transaction review', icon: 'checkc', rgb: RGB.ok},
-      h('div', {class: 'rv-done'}, glyph('check', 2.4),
-        h('p', {}, cleared ? 'All caught up — every transaction is reviewed.' : 'Nothing to review right now.'),
+  // The batch is exhausted (every visible row was resolved or skipped). Refetch the queue before declaring completion:
+  // a capped read may have hidden more unresolved rows, and resolving the batch could have uncovered them. Rows the
+  // user skipped this session are left out so they do not loop straight back; they stay unresolved for next time.
+  async function advance() {
+    const page = $('page');
+    const tk = ST.tk;
+    fill(page, skeleton(['card']));
+    let data;
+    try {
+      data = await api('/api/transactions', {kind: 'review', limit: LIMIT});
+    } catch (e) {
+      if (tk === S.token) fill(page, errorCard(e, () => advance()));
+      return;
+    }
+    if (tk !== S.token) return;
+    const fresh = (data.rows || []).filter((r) => !ST.skipped.has(r.transaction_id));
+    if (fresh.length) {
+      ST.rows = fresh;
+      ST.idx = 0;
+      ST.confirming = false;
+      draw();
+      return;
+    }
+    // Nothing unresolved remains except rows the user skipped. "All caught up" is only true when none were skipped.
+    fill(page, doneCard(ST.resolved, ST.skipped.size));
+  }
+
+  function doneCard(resolved, skipped) {
+    let line;
+    if (skipped > 0) {
+      // Skipping is never resolution: say what is still waiting, never "every transaction is reviewed".
+      line = resolved > 0
+        ? `Reviewed ${resolved}. ${plural(skipped, 'transaction')} skipped — still waiting for you.`
+        : `${plural(skipped, 'transaction')} skipped — still waiting for you. Nothing else to review right now.`;
+    } else {
+      line = resolved > 0 ? 'All caught up — every transaction is reviewed.' : 'Nothing to review right now.';
+    }
+    const cleared = skipped === 0 && resolved > 0;
+    return card({title: 'Transaction review', icon: cleared ? 'checkc' : 'swap', rgb: cleared ? RGB.ok : RGB.acc},
+      h('div', {class: 'rv-done'}, glyph(cleared ? 'check' : 'swap', 2.4),
+        h('p', {}, line),
         h('a', {class: 'btn', href: '#/transactions'}, 'See all transactions')));
   }
 
@@ -42,7 +89,7 @@
     const page = $('page');
     const total = ST.rows.length;
     if (!total || ST.idx >= total) {
-      fill(page, doneCard(ST.resolved > 0));
+      advance();   // batch exhausted: confirm against the server before claiming completion
       return;
     }
     const t = ST.rows[ST.idx];
@@ -105,7 +152,8 @@
         const extra = makeRule && res.changed > 1 ? ` ${plural(res.changed, 'transaction')} updated.` : '';
         toast([makeRule ? 'Rule saved: ' : 'Saved ', h('b', {}, t.merchant || 'transaction'), ' → ', h('b', {}, res.category), '.', extra],
           [], {timeout: 3500});
-        ST.resolved = (ST.resolved || 0) + 1;
+        ST.resolved += 1;
+        ST.skipped.delete(t.transaction_id);   // resolved now: no longer a skipped row
         ST.rows.splice(ST.idx, 1);   // drop the resolved item; the next one slides into its place
         loadCounts();
         ST.busy = false;
@@ -122,6 +170,8 @@
 
   function skip() {
     if (ST.busy) return;
+    const t = ST.rows[ST.idx];
+    if (t) ST.skipped.add(t.transaction_id);   // skipped, not resolved: it stays unresolved and never counts as reviewed
     ST.idx += 1;
     draw();
   }

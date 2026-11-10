@@ -1528,8 +1528,8 @@ the keyless valuation sources (Carfax, Redfin, photos) are turned off. The app s
 so the forward-auth proxy must reach it over loopback (a same-Pod sidecar). No network call, no secret is read or
 written. See deploy/ for the container and Kubernetes artifacts.
 
-  finance homelab-init --allow-user jon --public-url https://money.example.net
-  FINANCE_ALLOWED_USERS=jon FINANCE_PUBLIC_URLS=https://money.example.net finance homelab-init"""
+  finance homelab-init --allow-user you --public-url https://finance.example.net
+  FINANCE_ALLOWED_USERS=you FINANCE_PUBLIC_URLS=https://finance.example.net finance homelab-init"""
 
 
 def cmd_homelab_init(args) -> int:

@@ -5,7 +5,7 @@ hermes-finance is free software licensed under the **GNU Affero General Public L
 
 ## Why this notice exists
 
-The artifacts in `deploy/` run hermes-finance as a network service (at `https://money.basalisk.net`). Section 13 of
+The artifacts in `deploy/` run hermes-finance as a network service (e.g. at `https://finance.example.invalid`). Section 13 of
 the AGPL ("Remote Network Interaction") requires that **all users who interact with a modified version over a network
 be offered the opportunity to receive its Corresponding Source.** This notice, and the obligations below, apply to
 anyone who deploys this software — modified or not — so that users can obtain the source of the version they are
